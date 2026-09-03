@@ -1,0 +1,24 @@
+@{
+    # Use absolute paths. The scheduled task does not inherit your interactive
+    # shell's working directory or mapped network drives.
+    QdfPath = 'C:\Users\YourName\Documents\Quicken\QData.QDF'
+    QuickenDirectory = 'C:\Program Files (x86)\Quicken'
+    UvPath = 'C:\Tools\uv\uv.exe'
+
+    # Optional: path to a DPAPI-protected SecureString created under the task
+    # account. Never put the plaintext QDF password in this configuration file.
+    # Environment variables such as %ProgramData% are expanded by the worker.
+    # DatafilePasswordSecretPath = '%ProgramData%\QdfExport\qdf-password.dpapi'
+
+    # Prefer a UNC path. The task account must have create/write/rename access.
+    DestinationDirectory = '\\server\share\quicken-exports'
+    OutputFilePattern = 'quicken.sqlite'
+
+    # Extraction and SQLite creation happen locally before the completed file
+    # is copied to the destination. Logs remain local for troubleshooting.
+    StagingDirectory = '%ProgramData%\QdfExport\staging'
+    LogDirectory = '%ProgramData%\QdfExport\logs'
+
+    # Maintain one current export by atomically replacing the previous file.
+    ReplaceExisting = $true
+}
