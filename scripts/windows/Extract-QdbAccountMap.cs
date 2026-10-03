@@ -141,7 +141,7 @@ internal static class ExtractQdbAccountMap
             var module = LoadLibrary("qaccess.dll");
             if (module == IntPtr.Zero) throw new InvalidOperationException("LoadLibrary qaccess.dll failed");
             // qaccess's transaction methods use this module global as the QDB handle.
-            Marshal.WriteInt32(IntPtr.Add(module, 0x2b9efc), db.ToInt32());
+            QaccessDatabaseGlobal.Set(module, db);
             var build = Load<BuildAcctList>(module, "ACCT_BuildAcctList");
             build(0x3f, unchecked((uint)db.ToInt32()));
             return new MemoApi(module);
