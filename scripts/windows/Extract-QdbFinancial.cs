@@ -139,7 +139,7 @@ internal static class ExtractQdbFinancial
     {
         // The account catalog APIs use the qaccess current-database global,
         // while the status accessors also accept the explicit QDB handle.
-        Marshal.WriteInt32(IntPtr.Add(access, 0x2b9efc), db.ToInt32());
+        QaccessDatabaseGlobal.Set(access, db);
         var build = Load<BuildAcctList>(access, "ACCT_BuildAcctList");
         var countAccounts = Load<CountAccounts>(access, "ACCT_CountAccounts");
         var nth = Load<NthAcctHandle>(access, "_ACCT_GetNthAcctHandle@12");

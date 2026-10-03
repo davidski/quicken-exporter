@@ -81,6 +81,7 @@ $mapHelper = Join-Path $PSScriptRoot 'Extract-QdbAccountMap.cs'
 $reportHelper = Join-Path $PSScriptRoot 'Extract-QdbReports.cs'
 $variableHelper = Join-Path $PSScriptRoot 'Extract-QdbVariableType.cs'
 $passwordHelper = Join-Path $PSScriptRoot 'QdbPassword.cs'
+$qaccessGlobalHelper = Join-Path $PSScriptRoot 'QaccessDatabaseGlobal.cs'
 $assemblyInfo = Join-Path $PSScriptRoot 'QdfExportAssemblyInfo.cs'
 $precompiledDirectory = Join-Path $exportRoot 'bin'
 $precompiledHelperExe = Join-Path $precompiledDirectory 'Extract-QdbFinancial.exe'
@@ -217,6 +218,9 @@ if ($missingPrecompiledHelpers -ne 0) {
     if (-not (Test-Path -LiteralPath $passwordHelper -PathType Leaf)) {
         throw "qdb password bridge source not found: $passwordHelper"
     }
+    if (-not (Test-Path -LiteralPath $qaccessGlobalHelper -PathType Leaf)) {
+        throw "qaccess database-global resolver source not found: $qaccessGlobalHelper"
+    }
 }
 
 New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($sqlite)) | Out-Null
@@ -253,13 +257,13 @@ try {
 
     if ($missingPrecompiledHelpers -ne 0) {
         Write-QdfProgress '[QDF export] Preparing native extractors...'
-        & $compiler /nologo /platform:x86 /target:exe /out:$helperExe $helper $passwordHelper $assemblyInfo
+        & $compiler /nologo /platform:x86 /target:exe /out:$helperExe $helper $passwordHelper $qaccessGlobalHelper $assemblyInfo
         if ($LASTEXITCODE -ne 0) { throw "Failed to compile the qdb financial extractor" }
-        & $compiler /nologo /platform:x86 /target:exe /out:$mapHelperExe $mapHelper $passwordHelper $assemblyInfo
+        & $compiler /nologo /platform:x86 /target:exe /out:$mapHelperExe $mapHelper $passwordHelper $qaccessGlobalHelper $assemblyInfo
         if ($LASTEXITCODE -ne 0) { throw "Failed to compile the qdb account-index extractor" }
-        & $compiler /nologo /platform:x86 /target:exe /out:$reportHelperExe $reportHelper $passwordHelper $assemblyInfo
+        & $compiler /nologo /platform:x86 /target:exe /out:$reportHelperExe $reportHelper $passwordHelper $qaccessGlobalHelper $assemblyInfo
         if ($LASTEXITCODE -ne 0) { throw "Failed to compile the qdb saved-report extractor" }
-        & $compiler /nologo /platform:x86 /target:exe /out:$variableHelperExe $variableHelper $passwordHelper $assemblyInfo
+        & $compiler /nologo /platform:x86 /target:exe /out:$variableHelperExe $variableHelper $passwordHelper $qaccessGlobalHelper $assemblyInfo
         if ($LASTEXITCODE -ne 0) { throw "Failed to compile the qdb variable-type extractor" }
         Write-QdfProgress '[QDF export] Native extractors ready'
     }

@@ -91,8 +91,9 @@ function Compile-Extractor {
     )
 
     $passwordSource = Join-Path $exportRoot 'scripts\windows\QdbPassword.cs'
+    $qaccessGlobalSource = Join-Path $exportRoot 'scripts\windows\QaccessDatabaseGlobal.cs'
     $assemblyInfo = Join-Path $exportRoot 'scripts\windows\QdfExportAssemblyInfo.cs'
-    & $CompilerPath /nologo /platform:x86 /target:exe /out:$Output $Source $passwordSource $assemblyInfo
+    & $CompilerPath /nologo /platform:x86 /target:exe /out:$Output $Source $passwordSource $qaccessGlobalSource $assemblyInfo
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to compile the $Description"
     }
