@@ -114,3 +114,21 @@ def test_scheduled_export_includes_a_readable_run_summary():
     assert "Status: $runStatus" in scheduled
     assert "({1:N0} bytes)" in scheduled
     assert "$runSucceeded = $true" in scheduled
+
+
+def test_qaccess_database_global_is_resolved_and_verified_not_fixed():
+    resolver = read("scripts/windows/QaccessDatabaseGlobal.cs")
+
+    assert '"ACCT_SetHQDB"' in resolver
+    assert "Marshal.WriteInt32" not in resolver
+    for relative_path in (
+        "scripts/windows/Extract-QdbFinancial.cs",
+        "scripts/windows/Extract-QdbAccountMap.cs",
+    ):
+        source = read(relative_path)
+        assert "QaccessDatabaseGlobal.Set(" in source
+        assert "0x2b9efc" not in source
+
+    account_map = read("scripts/windows/Extract-QdbAccountMap.cs")
+    assert "MinRowsForQaccessCheck" in account_map
+    assert "qaccessRows == 0" in account_map

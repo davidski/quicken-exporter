@@ -56,14 +56,6 @@ For a protected QDF, use `-PromptForPassword` or pass `-DatafilePassword` as a
 `-KeepExtraction` preserves intermediate files; `-StartDate` and `-EndDate`
 limit the transaction window.
 
-The helpers locate qaccess.dll's current-database global (used for memos,
-splits, clear status, and investment transactions) by reading it from the
-`ACCT_BuildAcctList` export, so they follow Quicken updates. If a future build
-changes that code and extraction stops with "Could not locate qaccess.dll's
-current-database global", set `QDF_QACCESS_DB_GLOBAL_RVA` to the global's RVA
-in hex (for example `0x2bd3dc`) before running the wrapper. Run with `-Verbose`
-to see which RVA was used.
-
 ### QIF
 
 QIF is a portable fallback, not the primary path: it lacks native account

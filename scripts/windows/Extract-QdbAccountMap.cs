@@ -9,6 +9,7 @@ internal static class ExtractQdbAccountMap
     private const uint TxType = 0xf7;
     private const uint IndexType = 0x134;
     private const int RecordSize = 211;
+    private const int MinRowsForQaccessCheck = 100;
 
     [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
     private static extern IntPtr LoadLibrary(string name);
@@ -345,6 +346,11 @@ internal static class ExtractQdbAccountMap
                     Path.Combine(Path.GetDirectoryName(outputPath), "qdb-canonical-check-numbers.tsv"),
                     memoApi);
             }
+            catch (InvalidOperationException error)
+            {
+                Console.Error.WriteLine(error.Message);
+                return 3;
+            }
             finally { close(db); }
             return 0;
         }
@@ -411,6 +417,7 @@ internal static class ExtractQdbAccountMap
                 writer.Write((uint)RecordSize);
                 writer.Write((uint)0);
                 var written = 0;
+                var qaccessRows = 0;
                 foreach (var handle in handles)
                 {
                     var count = num(db, handle, txType);
@@ -441,12 +448,14 @@ internal static class ExtractQdbAccountMap
                                  !string.IsNullOrWhiteSpace(memo[3])))
                             {
                                 memoWriter.WriteLine(string.Join("\t", registerRef, memo[0], Clean(memo[1]), Clean(memo[2]), Clean(memo[3]), handle, key));
+                                qaccessRows++;
                             }
                             var splits = memoApi.ReadSplits(handle, key);
                             for (var splitIndex = 0; splitIndex < splits.Count; splitIndex++)
                             {
                                 var split = splits[splitIndex];
                                 splitWriter.WriteLine(string.Join("\t", registerRef, splitIndex, split.Category, split.Transfer, split.Memo, split.Amount, split.RawHex, handle, key));
+                                qaccessRows++;
                             }
                             var investment = memoApi.ReadInvestment(handle, key);
                             if (investment != null)
@@ -472,6 +481,7 @@ internal static class ExtractQdbAccountMap
                                     investment.IsCash ? "1" : "0",
                                     RegisterDate(row)
                                 ));
+                                qaccessRows++;
                             }
                         }
                         written++;
@@ -480,6 +490,15 @@ internal static class ExtractQdbAccountMap
                 }
                 stream.Position = 12;
                 writer.Write((uint)written);
+                // An unset qaccess database global leaves every qaccess-backed sidecar
+                // empty while the register itself still extracts. ponytail: a real
+                // register this size with no memos, splits, or investment rows would
+                // also trip this; lower the floor if one turns up.
+                if (memoApi != null && written >= MinRowsForQaccessCheck && qaccessRows == 0)
+                    throw new InvalidOperationException(string.Format(
+                        "qaccess.dll returned no memos, splits, or investment transactions for {0} register rows. " +
+                        "Its current-database handle was probably not applied for this Quicken build.",
+                        written));
             }
         }
         finally { Marshal.FreeHGlobal(item); }
