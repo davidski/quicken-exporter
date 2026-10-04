@@ -232,19 +232,11 @@ class QdbReportComponent:
 
     @property
     def budget(self) -> str | None:
-        """Return the validated budget source label, when known."""
-        if self.report_type != 20:
-            return None
-        if (
-            self.date_range_code == 23
-            and self.interval_code == 18
-            and self._setting_word(0x4E) == 0x020D
-        ) or (
-            self.date_range_code == 3
-            and self.interval_code == 0
-            and self._setting_word(0x4E) == 0x0208
-        ):
-            return "Cyentia"
+        """Return the report's selected budget name, when decoded.
+
+        The selected budget is not yet located in the report settings, so budget
+        reports cover every budget and label each row with its budget name.
+        """
         return None
 
     @property
