@@ -180,11 +180,36 @@ gives chat agents a safe, read-only workflow for schema/provenance checks,
 transaction and investment queries, balances, budgets, and register/download
 distinctions.
 
+Install it for your agents with the [`skills`](https://www.npmjs.com/package/skills)
+CLI (`npx` works the same as `pnpx`):
+
+```sh
+pnpx skills add davidski/quicken-exporter --skill quicken-sqlite-query -g
+```
+
+`-g` installs for your user rather than the current project. To install from a
+local checkout instead, replace `davidski/quicken-exporter` with its path. Update
+or remove it later with `pnpx skills update` and
+`pnpx skills remove quicken-sqlite-query -g`.
+
 ## A note for Mac users
 
 Quicken for Mac users already have a SQLite database and do not need this
 exporter. [quicken-mac-mcp](https://github.com/dweekly/quicken-mac-mcp) may help
 connect that database to chat agents and other tools.
+
+## Development
+
+Install the locked development tools, then lint, format-check, and test:
+
+```sh
+uv sync --group dev
+uv run --group dev ruff check .
+uv run --group dev ruff format --check .
+uv run --group dev python -m pytest
+```
+
+The tests use small synthetic fixtures; no Quicken data is needed.
 
 ## AI disclosure
 
