@@ -1,0 +1,4 @@
+interface:
+  display_name: "Quicken SQLite Query"
+  short_description: "Query Quicken SQLite extracts"
+  default_prompt: "Use $quicken-sqlite-query to locate and query a Quicken SQLite extract read-only."
