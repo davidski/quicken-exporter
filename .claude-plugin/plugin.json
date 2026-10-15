@@ -1,5 +1,5 @@
 {
-  "name": "quicken-exporter",
+  "name": "david-severski-skills",
   "skills": [
     "./skills/quicken-sqlite-query"
   ]
