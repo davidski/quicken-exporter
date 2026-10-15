@@ -1,6 +1,0 @@
-{
-  "name": "quicken-exporter",
-  "skills": [
-    "./skills/quicken-sqlite-query"
-  ]
-}
