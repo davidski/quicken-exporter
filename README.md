@@ -100,6 +100,9 @@ uv run --script scripts/export_financial_sqlite.py \
   qdb-financial-extract output/quicken.sqlite --format qdb
 ```
 
+[docs/extraction-files.md](docs/extraction-files.md) lists every file in the
+directory and which ones are required.
+
 ### QHI/Home Inventory
 
 Exporting QHI data is straightforward. Just replace the path to the QHI file
