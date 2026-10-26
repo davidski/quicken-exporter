@@ -68,6 +68,8 @@ Written by the helpers from qaccess APIs.
 | `qdb-register-splits.tsv` | no | Split lines from qaccess's native Transaction object. |
 | `qdb-register-clear-status.tsv` | no | Cleared status for each register reference. |
 | `qdb-canonical-check-numbers.tsv` | no | Check numbers read directly from canonical transaction objects. |
+| `qdb-scheduled-transactions.tsv` | no | Scheduled transactions from qaccess's SchedTransaction object: next/end date, amounts, payee, frequency. |
+| `qdb-scheduled-transaction-splits.tsv` | no | Split lines of each scheduled transaction (raw category/transfer handles). |
 | `qdb-investment-transactions.tsv` | no | Native investment transactions: shares, prices, and cash and transfer legs. |
 | `qdb-securities.tsv` | no | Security reference, name, and symbol. |
 | `qdb-price-history.tsv` | no | Price quotes for each security. |

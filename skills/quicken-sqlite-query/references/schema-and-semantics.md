@@ -30,6 +30,7 @@ Common extract designs include:
 - `transactions` with one parent row per transaction and `transaction_splits` containing category/payee/amount detail;
 - the revised native export's register-first `transactions` rows (`qdb_record_type = 'QDB:0xf7'`) with parallel FI/download rows in `fi_transactions` (`qdb_record_type = 'QDB:0x13c'`);
 - canonical posting tables such as `transaction_lines`;
+- `scheduled_transactions` / `scheduled_transaction_splits` for Quicken's scheduled bills, deposits, and transfers (future instances only; never add them to ledger totals);
 - specialized tables for investments, balances, or reports.
 
 Determine which design is present before aggregating. If splits exist, do not sum a `--Split--` parent together with its split rows. Confirm whether amounts are stored as decimal values, integer minor units such as cents, or signed values whose direction must be inferred from account type and transaction type.

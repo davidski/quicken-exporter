@@ -2257,6 +2257,7 @@ def export_qdb_financial_to_sqlite(
         write_qph_security_prices_to_sqlite(qdf_path, destination)
     write_qdb_investment_transactions_to_sqlite(directory, destination)
     write_qdb_investment_balance_periods_to_sqlite(directory, destination)
+    write_qdb_scheduled_transactions_to_sqlite(directory, destination)
     report_source = directory / "qdb-reports.bin"
     if report_source.is_file():
         from .qdb_reports import write_qdb_reports_to_sqlite
@@ -2272,6 +2273,106 @@ def export_qdb_financial_to_sqlite(
             [(name,) for name in QDB_INTERNAL_ACCOUNT_NAMES],
         )
     return count
+
+
+# SchedTransaction::GetAmountType: how Quicken computes the amount it shows.
+SCHEDULED_AMOUNT_TYPES = {0: "fixed", 1: "estimated", 2: "card_balance"}
+# GetRemainingPayments returns 999 for schedules with no payment limit.
+SCHEDULED_UNLIMITED_PAYMENTS = 999
+
+
+def _read_tsv(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE))
+
+
+def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: str | Path) -> int:
+    """Materialize qaccess SchedTransaction rows (scheduled bills/deposits/transfers).
+
+    Category and transfer handles resolve through ``accounts.qdb_handle`` and
+    ``categories.qdb_handle``, so run after the account and category catalogs.
+    """
+    directory = Path(source)
+    path = directory / "qdb-scheduled-transactions.tsv"
+    if not path.is_file():
+        return 0
+    rows = _read_tsv(path)
+    split_path = directory / "qdb-scheduled-transaction-splits.tsv"
+    splits = _read_tsv(split_path) if split_path.is_file() else []
+    with sqlite3.connect(destination) as connection:
+        account_ids = {
+            h: i
+            for i, h in connection.execute(
+                "SELECT id, qdb_handle FROM accounts WHERE qdb_handle IS NOT NULL"
+            )
+        }
+        account_names = {
+            h: n
+            for n, h in connection.execute(
+                "SELECT name, qdb_handle FROM accounts WHERE qdb_handle IS NOT NULL"
+            )
+        }
+        category_names = {
+            h: n
+            for n, h in connection.execute(
+                "SELECT name, qdb_handle FROM categories WHERE qdb_handle IS NOT NULL"
+            )
+        }
+
+        def target(category: int, transfer: int) -> tuple[str | None, str | None]:
+            # A category slot holding an account handle is a transfer (as in register splits).
+            if category in account_names:
+                return None, account_names[category]
+            if transfer in account_names:
+                return category_names.get(category), account_names[transfer]
+            return category_names.get(category), None
+
+        def cents(value: str) -> str:
+            return str(Decimal(int(value)) / Decimal(100))
+
+        ids: dict[int, int] = {}
+        for row in rows:
+            qid = int(row["qid"])
+            category, transfer = target(int(row["category"]), int(row["transfer_account"]))
+            remaining = int(row["remaining_payments"])
+            amount_type = int(row["amount_type"])
+            cursor = connection.execute(
+                "INSERT INTO scheduled_transactions(qdb_qid, account_id, next_date, end_date, "
+                "remaining_payments, amount, stored_amount, amount_type, payee, memo, category, "
+                "transfer_account, frequency, method, reminder_lead_days) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(qdb_qid) DO NOTHING",
+                (
+                    qid,
+                    account_ids.get(int(row["account"])),
+                    row["next_date"] or None,
+                    row["end_date"] or None,
+                    None if remaining == SCHEDULED_UNLIMITED_PAYMENTS else remaining,
+                    cents(row["amount_cents"]),
+                    cents(row["stored_amount_cents"]),
+                    SCHEDULED_AMOUNT_TYPES.get(amount_type, str(amount_type)),
+                    row["payee"] or None,
+                    row["memo"] or None,
+                    category,
+                    transfer,
+                    row["frequency"] or None,
+                    row["method"] or None,
+                    int(row["reminder_lead_days"]),
+                ),
+            )
+            if cursor.rowcount:
+                ids[qid] = cursor.lastrowid
+        for split in splits:
+            parent = ids.get(int(split["qid"]))
+            if parent is None:
+                continue
+            category, transfer = target(int(split["category"]), int(split["transfer"]))
+            connection.execute(
+                "INSERT INTO scheduled_transaction_splits(scheduled_transaction_id, line_number, "
+                "category, transfer_account, amount) VALUES (?, ?, ?, ?, ?)",
+                (parent, int(split["line"]), category, transfer, cents(split["amount_cents"])),
+            )
+    return len(ids)
 
 
 def parse_qdb_fi_transactions(source: str | Path) -> list[QifTransaction]:

@@ -345,6 +345,7 @@ internal static class ExtractQdbAccountMap
                     accountMapPath,
                     Path.Combine(Path.GetDirectoryName(outputPath), "qdb-canonical-check-numbers.tsv"),
                     memoApi);
+                ExtractScheduled(Path.GetDirectoryName(outputPath));
             }
             catch (InvalidOperationException error)
             {
@@ -355,6 +356,107 @@ internal static class ExtractQdbAccountMap
             return 0;
         }
         finally { Marshal.FreeHGlobal(path); }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int StaticCount();
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)] private delegate void SchedCtor(IntPtr self, uint index, int flag);
+    // QDB_DATE_TYPE getters return through a hidden result pointer (callee ret 4).
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)] private delegate IntPtr DateValue(IntPtr self, IntPtr result);
+
+    // Scheduled transactions (bills, deposits, transfers): qaccess's
+    // SchedTransaction enumerates QDB type 0xfc by index and loads each 0x105
+    // record.  Must run after MemoApi.Open has set the qaccess database global.
+    private static void ExtractScheduled(string directory)
+    {
+        var module = LoadLibrary("qaccess.dll");
+        var count = Load<StaticCount>(module, "?GetNumberOfScheduledTransactions@SchedTransaction@@SAHXZ")();
+        var ctor = Load<SchedCtor>(module, "??0SchedTransaction@@QAE@IH@Z");
+        var dtor = Load<RegDtor>(module, "??1SchedTransaction@@UAE@XZ");
+        var qid = Load<PairValue>(module, "?GetSchedTxQid@SchedTransaction@@QAEKXZ");
+        var account = Load<InvestmentType>(module, "?GetAccount@Transaction@@QAEGXZ");
+        var xferAccount = Load<TransferAccount>(module, "?GetXferAccount@Transaction@@QAEG_N@Z");
+        var category = Load<PairValue>(module, "?GetCategory@Transaction@@QAEKXZ");
+        var nextDate = Load<DateValue>(module, "?GetTxnDate@Transaction@@QAE?ATQDB_DATE_TYPE@@XZ");
+        var endDate = Load<DateValue>(module, "?GetEndDate@SchedTransaction@@QAE?ATQDB_DATE_TYPE@@XZ");
+        var remaining = Load<GetClearStatus>(module, "?GetRemainingPayments@SchedTransaction@@QAEHXZ");
+        var amount = Load<InvestmentAmount>(module, "?GetAmount@SchedTransaction@@UAE_JXZ");
+        var storedAmount = Load<InvestmentAmount>(module, "?GetAmount@Transaction@@UAE_JXZ");
+        var amountType = Load<GetClearStatus>(module, "?GetAmountType@SchedTransaction@@QAE?AW4SCHED_TXN_AMOUNT_TYPE_ENUM@@XZ");
+        var payee = Load<GetText>(module, "?GetPayee@Transaction@@QAEPADPADH@Z");
+        var memo = Load<GetText>(module, "?GetMemo@Transaction@@QAE_NPADH@Z");
+        var frequency = Load<GetText>(module, "?GetFrequencyText@SchedTransaction@@QAE_NPADH@Z");
+        var method = Load<GetText>(module, "?GetSchedTransMethodText@SchedTransaction@@QAEXPADH@Z");
+        var leadTime = Load<GetClearStatus>(module, "?GetLeadTime@SchedTransaction@@QAEHXZ");
+        var numSplits = Load<NumSplits>(module, "?GetNumSplits@Transaction@@QAEHXZ");
+        var getSplit = Load<GetSplit>(module, "?GetSplit@Transaction@@QAEXHPAUQDB_SPLIT_Q03v1_TYPE@@@Z");
+        var self = Marshal.AllocHGlobal(0x10000);
+        var buffer = Marshal.AllocHGlobal(4096);
+        var date = Marshal.AllocHGlobal(16);
+        Func<GetText, string> text = f =>
+        {
+            for (var i = 0; i < 4096; i++) Marshal.WriteByte(buffer, i, 0);
+            f(self, buffer, 4096);
+            return Clean(Marshal.PtrToStringAnsi(buffer) ?? "");
+        };
+        Func<DateValue, string> readDate = f =>
+        {
+            Marshal.WriteInt32(date, 0);
+            f(self, date);
+            return SchedDate(unchecked((uint)Marshal.ReadInt32(date)));
+        };
+        try
+        {
+            using (var writer = new StreamWriter(Path.Combine(directory, "qdb-scheduled-transactions.tsv"), false, new UTF8Encoding(false)))
+            using (var splitWriter = new StreamWriter(Path.Combine(directory, "qdb-scheduled-transaction-splits.tsv"), false, new UTF8Encoding(false)))
+            {
+                writer.WriteLine("qid\taccount\ttransfer_account\tcategory\tnext_date\tend_date\tremaining_payments\tamount_cents\tstored_amount_cents\tamount_type\tpayee\tmemo\tfrequency\tmethod\treminder_lead_days");
+                splitWriter.WriteLine("qid\tline\tcategory\ttransfer\tamount_cents");
+                for (uint index = 0; index < count; index++)
+                {
+                    for (var i = 0; i < 0x10000; i++) Marshal.WriteByte(self, i, 0);
+                    ctor(self, index, 0);
+                    try
+                    {
+                        var id = qid(self);
+                        writer.WriteLine(string.Join("\t", new object[] {
+                            id, account(self), xferAccount(self, false), category(self),
+                            readDate(nextDate), readDate(endDate), remaining(self),
+                            amount(self), storedAmount(self), amountType(self),
+                            text(payee), text(memo), text(frequency), text(method), leadTime(self) }));
+                        var splits = numSplits(self);
+                        for (var line = 0; line < splits; line++)
+                        {
+                            for (var i = 0; i < 64; i++) Marshal.WriteByte(buffer, i, 0);
+                            getSplit(self, line, buffer);
+                            splitWriter.WriteLine(string.Join("\t", id, line,
+                                unchecked((uint)Marshal.ReadInt32(buffer, 0)),
+                                unchecked((uint)Marshal.ReadInt32(buffer, 4)),
+                                Marshal.ReadInt64(buffer, 12)));
+                        }
+                    }
+                    finally { dtor(self); }
+                }
+            }
+            Console.WriteLine("scheduled transactions=" + count);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(date);
+            Marshal.FreeHGlobal(buffer);
+            Marshal.FreeHGlobal(self);
+        }
+    }
+
+    // qaccess QDB_DATE_TYPE: u8 day, u8 month, u16 years since 1900.
+    // Year 5000 is Quicken's open-ended sentinel and is written as empty.
+    private static string SchedDate(uint value)
+    {
+        var day = (int)(value & 0xff);
+        var month = (int)((value >> 8) & 0xff);
+        var year = (int)(value >> 16);
+        if (year == 5000 || month < 1 || month > 12 || day < 1 || day > 31) return "";
+        if (year < 1900) year += 1900;
+        return string.Format(CultureInfo.InvariantCulture, "{0:0000}-{1:00}-{2:00}", year, month, day);
     }
 
     private static void ExtractCanonicalCheckNumbers(
