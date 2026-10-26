@@ -1,31 +1,36 @@
 # Quicken exporter
 
+> Create a [SQLite](https://www.sqlite.org/) database from your Quicken Classic
+> for Windows data, giving you free (as in speech) access to your data.
+
 I've been a Quicken user for over 30 (!) years and have a truly stupid amount of
 data in the program. Getting access to this information in a form that I can
-analyze and blend with other data sources has been a long-desired goal for my
-recovering data scientist persona.
-
-This repository reads Quicken Classic for Windows data without modifying the
-source files, then writes SQLite databases I can query and use elsewhere.
-
-Native QDF extraction runs on Windows through Quicken's installed 32-bit DLLs.
-QIF and QHI/Home Inventory export require Python 3.11+; `uv` is a recommended
-runner, not a runtime dependency.
+analyze and blend with other data sources scratches my recovering data scientist itch.
 
 ## Start here
 
-- **Recommended: QDF on Windows.** A QDF is your Quicken data file; this is
-  the richest export.
+- **Recommended: QDF on Windows.** Reads in your QDF and outputs a SQLite DB.
 - **Fallback: QIF.** A QIF is exported from Quicken and produces a less
   complete but useful SQLite database.
-- **Separate: QHI/Home Inventory.** Use this only with a `QHI.IDB` file.
+- **Optional: QHI/Home Inventory.** If you use the deprecated Quicken Home
+- Inventory program, that can also be exported into a standalone DB.
 
-If you use Quicken for Mac, see the note near the end of this README.
+- **Quicken for Mac: unsupported**  QMac already uses a SQLite database, though
+- it's encrypted. [quicken-mac-mcp](https://github.com/dweekly/quicken-mac-mcp)
+  may help connect that database to AI agents and other tools.
+
+## AI disclosure
+
+AI is used extensively in the developing and maintaining this project. I work
+closely with the AI agents to refine goals and approaches, trying to keep
+slop to a minimum. Areas with heavy AI include some of the tedious script
+writing and many Windows particulars. I've reviewed intermediate steps and
+validated the end products, which I use on a regular basis. YMMV.
 
 ## Exporting
 
-Source files stay unchanged; the exporter writes or replaces the requested
-SQLite and report outputs. The commands below use `uv`.
+All exports are read-only and make no changes to your Quicken data files.
+Each export creates a fresh database, overwriting any previously existing export.
 
 ### QDF on Windows
 
@@ -37,7 +42,7 @@ example, `winget install astral-sh.uv`). You also need Windows PowerShell 5.1
 and .NET Framework 4.x. Quicken supplies the matching DLLs; do not copy or use
 them directly.
 
-From this repository, run the wrapper in PowerShell:
+From this repository, run the PowerShell wrapper:
 
 ```powershell
 .\scripts\windows\Export-QdfFinancial.ps1 `
@@ -45,7 +50,7 @@ From this repository, run the wrapper in PowerShell:
   -OutputSqlite .\output\quicken.sqlite
 ```
 
-This writes the SQLite database at `output\quicken.sqlite`.
+This reads the QDF at C:\path\to and writes the SQLite database at `output\quicken.sqlite`.
 
 The Windows stage uses C# helpers to access Quicken's native DLLs. Source under
 `scripts/windows` is compiled when needed, so the executables are reproducible;
@@ -58,8 +63,10 @@ limit the transaction window.
 
 ### QIF
 
-QIF is a portable fallback, not the primary path: it lacks native account
-metadata, balances, budgets, saved reports, and QDF investment/FI relationships.
+A QIF export from Quicken can be used instead of starting from a QDF. This is
+an alternate route and lacks several things your get from the QDF reader,
+including native account metadata, balances, budgets, saved reports, and
+investment/FI relationships.
 
 Starting from a QIF file, use:
 
@@ -68,7 +75,7 @@ uv run --script scripts/export_financial_sqlite.py \
   exported.qif output/transactions.sqlite --format qif
 ```
 
-Optional date limits can be supplied with `--start-date YYYY-MM-DD` and
+Like with QDF reading, date limits can be supplied with `--start-date YYYY-MM-DD` and
 `--end-date YYYY-MM-DD`.
 
 ## What is and is not supported
@@ -85,7 +92,8 @@ available report types and data; it is not a Quicken display clone.
 ### Materialize an existing Windows extraction
 
 After Windows extracts the QDF, the complete extraction directory can be
-materialized on another platform:
+taken to another platform (e.g. Linux, MacOS, or any other python supported 
+environment) and converted into a DB:
 
 ```sh
 uv run --script scripts/export_financial_sqlite.py \
@@ -94,14 +102,13 @@ uv run --script scripts/export_financial_sqlite.py \
 
 ### QHI/Home Inventory
 
-QHI uses a standalone `QHI.IDB` file and no Quicken DLLs:
+Exporting QHI data is straightforward. Just replace the path to the QHI file
+and your desired output location in the following:
 
 ```sh
 uv run --script scripts/export_qhi_sqlite.py \
   "/path/to/your/QHI.IDB" "/path/to/home_inventory.sqlite"
 ```
-
-Replace both paths with your files.
 
 ### Windows package and scheduled export
 
@@ -122,7 +129,7 @@ Import-Module 'C:\Tools\QdfExport\QdfExport.psd1'
 ```
 
 The machine needs matching Quicken DLLs; the bundle has the four precompiled
-x86 helpers and does not need `csc.exe`.
+x86 helpers.
 
 For a daily export, copy
 `QdfExport\scripts\windows\QdfScheduledExport.config.psd1.example` and set its
@@ -144,8 +151,6 @@ there.
 ```powershell
 DatafilePasswordSecretPath = 'C:\ProgramData\QdfExport\qdf-password.dpapi'
 ```
-
-Only the account that created this file can use it.
 
 Then register and test the task:
 
@@ -181,22 +186,14 @@ transaction and investment queries, balances, budgets, and register/download
 distinctions.
 
 Install it for your agents with the [`skills`](https://www.npmjs.com/package/skills)
-CLI (`npx` works the same as `pnpx`):
+CLI:
 
 ```sh
 pnpx skills add davidski/quicken-exporter --skill quicken-sqlite-query -g
 ```
 
-`-g` installs for your user rather than the current project. To install from a
-local checkout instead, replace `davidski/quicken-exporter` with its path. Update
-or remove it later with `pnpx skills update` and
-`pnpx skills remove quicken-sqlite-query -g`.
-
-## A note for Mac users
-
-Quicken for Mac users already have a SQLite database and do not need this
-exporter. [quicken-mac-mcp](https://github.com/dweekly/quicken-mac-mcp) may help
-connect that database to chat agents and other tools.
+`-g` installs for your user rather than the current project. Update or remove
+it later with `pnpx skills update` and `pnpx skills remove quicken-sqlite-query -g`.
 
 ## Development
 
@@ -210,14 +207,6 @@ uv run --group dev python -m pytest
 ```
 
 The tests use small synthetic fixtures; no Quicken data is needed.
-
-## AI disclosure
-
-AI is used extensively in development of this project. I have worked closely
-with the AI agents to refine goals and approaches. Areas with heavy AI include
-some of the tedious script writing and many Windows particulars. I've
-reviewed intermediate steps and validated the end products, which I use on a
-regular basis.
 
 ## License and boundaries
 
