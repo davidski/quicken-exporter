@@ -13,10 +13,10 @@ analyze and blend with other data sources scratches my recovering data scientist
 - **Fallback: QIF.** A QIF is exported from Quicken and produces a less
   complete but useful SQLite database.
 - **Optional: QHI/Home Inventory.** If you use the deprecated Quicken Home
-- Inventory program, that can also be exported into a standalone DB.
+  Inventory program, that can also be exported into a standalone DB.
 
 - **Quicken for Mac: unsupported**  QMac already uses a SQLite database, though
-- it's encrypted. [quicken-mac-mcp](https://github.com/dweekly/quicken-mac-mcp)
+  it's encrypted. [quicken-mac-mcp](https://github.com/dweekly/quicken-mac-mcp)
   may help connect that database to AI agents and other tools.
 
 ## AI disclosure
@@ -113,6 +113,8 @@ uv run --script scripts/export_qhi_sqlite.py \
   "/path/to/your/QHI.IDB" "/path/to/home_inventory.sqlite"
 ```
 
+[docs/qhi-sqlite-schema.md](docs/qhi-sqlite-schema.md) describes the output.
+
 ### Windows package and scheduled export
 
 On a Windows build machine with Windows PowerShell 5.1 and .NET Framework 4.x,
@@ -182,6 +184,10 @@ Reproduce-QdfReport `
 ```
 
 ## Using the database with chat agents
+
+The tables, columns, and views are documented in
+[docs/sqlite-schema.md](docs/sqlite-schema.md) (financial export) and
+[docs/qhi-sqlite-schema.md](docs/qhi-sqlite-schema.md) (home inventory).
 
 The included [`quicken-sqlite-query` skill](skills/quicken-sqlite-query/SKILL.md)
 gives chat agents a safe, read-only workflow for schema/provenance checks,
