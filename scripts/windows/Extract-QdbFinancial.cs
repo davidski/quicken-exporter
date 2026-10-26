@@ -98,7 +98,7 @@ internal static class ExtractQdbFinancial
                 ExtractType(db, num, spec, get, 0x86, args[1]);
                 ExtractType(db, num, spec, get, 0x8e, args[1]);
                 ExtractType(db, num, spec, get, 0x50, args[1]);
-                ExtractType(db, num, spec, get, 0x80, args[1]);
+                ExtractType(db, num, spec, get, 0x80, args[1], true);
                 ExtractType(db, num, spec, get, 0x38, args[1]);
                 ExtractType(db, num, spec, get, 0x51, args[1]);
                 ExtractType(db, num, spec, get, 0x63, args[1]);
@@ -108,8 +108,8 @@ internal static class ExtractQdbFinancial
                 ExtractType(db, num, spec, get, 0x9c, args[1]);
                 ExtractType(db, num, spec, get, 0xcb, args[1]);
                 ExtractType(db, num, spec, get, 0xad, args[1]);
-                ExtractType(db, num, spec, get, 0x13c, args[1]);
-                ExtractType(db, num, spec, get, 0x134, args[1]);
+                ExtractType(db, num, spec, get, 0x13c, args[1], true);
+                ExtractType(db, num, spec, get, 0x134, args[1], true);
                 ExtractAccountStatus(db, access, args[1]);
                 // Transaction-family companion records.  These are kept in the
                 // same decoded directory so the category/split investigation can
@@ -128,6 +128,11 @@ internal static class ExtractQdbFinancial
                 }) ExtractType(db, num, spec, get, companion, args[1]);
                 ExtractTransactionStrings(db, args[1]);
                 ExtractSecurityPrices(db, access, args[0], args[1]);
+            }
+            catch (UnsupportedRecordTypeException error)
+            {
+                Console.Error.WriteLine(error.Message);
+                return 5;
             }
             finally { close(db); }
             return 0;
@@ -318,13 +323,30 @@ internal static class ExtractQdbFinancial
         Console.WriteLine("security prices: securities=" + securityCount + " quotes=" + quoteCount);
     }
 
-    private static void ExtractType(IntPtr db, NumItems num, GetSpec spec, GetItem2 get, uint type, string outputDir)
+    private sealed class UnsupportedRecordTypeException : Exception
+    {
+        public UnsupportedRecordTypeException(string message) : base(message) { }
+    }
+
+    private static void ExtractType(IntPtr db, NumItems num, GetSpec spec, GetItem2 get, uint type, string outputDir, bool required = false)
     {
         var count = num(db, type);
         var itemSpec = spec(type);
         var size = itemSpec == IntPtr.Zero ? 0 : Marshal.ReadInt32(itemSpec, 0x20);
         Console.WriteLine(string.Format("type=0x{0:x} count={1} size={2}", type, count, size));
-        if (count <= 0 || size <= 0 || size > 0x100000) return;
+        // A zero count is a legitimately empty table; still write the header so
+        // downstream readers see an empty extract rather than a missing one.
+        if (count < 0 || size <= 0 || size > 0x100000)
+        {
+            // Companion types may not exist in every Quicken build; required
+            // ones mean qdb.dll does not match the record layout we decode.
+            if (!required) return;
+            throw new UnsupportedRecordTypeException(string.Format(
+                "qdb.dll reported an unusable layout for required record type 0x{0:x} " +
+                "(count={1}, size={2}{3}). This Quicken build is probably not supported; " +
+                "please report your Quicken version (Help > About).",
+                type, count, size, itemSpec == IntPtr.Zero ? ", no item spec" : ""));
+        }
         var buffer = Marshal.AllocHGlobal(size);
         var output = Marshal.AllocHGlobal(4);
         var file = Path.Combine(outputDir, string.Format("qdb-type-{0:x3}.bin", type));

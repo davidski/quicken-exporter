@@ -185,6 +185,7 @@ function Invoke-QdfNativeStage {
     }
     $exitCode = $LASTEXITCODE
     if ($exitCode -eq 4 -and $AllowPasswordRequired) { return 4 }
+    if ($exitCode -eq 5) { throw "$Name failed: this Quicken build's record layout is not supported (details above)." }
     if ($exitCode -ne 0) { throw $FailureMessage }
     $elapsed = ((Get-Date) - $started).TotalSeconds
     Write-QdfProgress ("[QDF export] {0} complete ({1:0.0}s)" -f $Name, $elapsed)
