@@ -14,6 +14,7 @@ from qdf_tools.qdb_financial import (
     write_qdb_investment_balance_periods_to_sqlite,
     write_qdb_investment_transactions_to_sqlite,
     write_qdb_register_balance_periods_to_sqlite,
+    write_qdb_scheduled_transactions_to_sqlite,
     write_qdb_security_prices_to_sqlite,
 )
 from qdf_tools.qif import QifTransaction
@@ -810,3 +811,42 @@ def test_write_transactions_materializes_tags_table(tmp_path):
     with sqlite3.connect(destination) as connection:
         assert connection.execute("SELECT tag FROM transactions").fetchone() == ("Vacation",)
         assert connection.execute("SELECT name FROM tags").fetchall() == [("Vacation",)]
+
+
+def test_write_qdb_scheduled_transactions_to_sqlite(tmp_path):
+    destination = tmp_path / "out.sqlite"
+    write_transactions(destination, [], source_format="test", source_name="test")
+    with sqlite3.connect(destination) as connection:
+        connection.execute(
+            "INSERT INTO accounts(name, qdb_handle) VALUES ('Checking', 8), ('Visa', 816), ('Loan', 1032)"
+        )
+        connection.execute(
+            "INSERT INTO categories(name, qdb_handle) VALUES ('Utilities:Internet', 4344), ('Interest', 6005)"
+        )
+    header = "qid\taccount\ttransfer_account\tcategory\tnext_date\tend_date\tremaining_payments\tamount_cents\tstored_amount_cents\tamount_type\tpayee\tmemo\tfrequency\tmethod\treminder_lead_days"
+    (tmp_path / "qdb-scheduled-transactions.tsv").write_text(
+        header + "\n"
+        "3\t816\t0\t4344\t2026-09-10\t\t999\t-11000\t-11000\t0\tSpectrum\tAcct 1\tMonthly\tPayment\t5\n"
+        "2\t8\t1032\t0\t2026-10-02\t2029-10-02\t37\t-22384\t-22384\t1\tBank\t\tMonthly\tPayment\t7\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "qdb-scheduled-transaction-splits.tsv").write_text(
+        "qid\tline\tcategory\ttransfer\tamount_cents\n2\t0\t1032\t0\t-22380\n2\t1\t6005\t0\t-4\n",
+        encoding="utf-8",
+    )
+
+    assert write_qdb_scheduled_transactions_to_sqlite(tmp_path, destination) == 2
+    with sqlite3.connect(destination) as connection:
+        rows = connection.execute(
+            "SELECT s.qdb_qid, a.name, s.next_date, s.end_date, s.remaining_payments, s.amount, "
+            "s.amount_type, s.category, s.transfer_account FROM scheduled_transactions s "
+            "JOIN accounts a ON a.id = s.account_id ORDER BY s.qdb_qid"
+        ).fetchall()
+        splits = connection.execute(
+            "SELECT line_number, category, transfer_account, amount FROM scheduled_transaction_splits ORDER BY line_number"
+        ).fetchall()
+    assert rows == [
+        (2, "Checking", "2026-10-02", "2029-10-02", 37, "-223.84", "estimated", None, "Loan"),
+        (3, "Visa", "2026-09-10", None, None, "-110", "fixed", "Utilities:Internet", None),
+    ]
+    assert splits == [(0, None, "Loan", "-223.8"), (1, "Interest", None, "-0.04")]

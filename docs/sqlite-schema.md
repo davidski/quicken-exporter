@@ -38,6 +38,8 @@ erDiagram
     accounts ||--o{ banking_account_balance_periods : account_id
     accounts ||--o{ investment_account_balance_periods : account_id
     accounts ||--o{ investment_position_balance_periods : account_id
+    accounts |o--o{ scheduled_transactions : account_id
+    scheduled_transactions ||--o{ scheduled_transaction_splits : scheduled_transaction_id
     transactions ||--o{ transaction_splits : transaction_id
     transactions |o--o{ fi_transactions : register_transaction_id
     transactions |o--o{ investment_transactions : transaction_id
@@ -174,6 +176,34 @@ Account-level investment balance history: `cash_balance`,
 
 Per-security holdings history: `account_id`, `security_id`, `shares`,
 `price`, `market_value` (+ `*_numeric`), over balance periods.
+
+### `scheduled_transactions`
+
+Quicken's scheduled bills, deposits, and transfers (Bills & Income
+reminders), read through qaccess's `SchedTransaction` object. One row per
+schedule; past instances are ordinary rows in `transactions`.
+
+| Column | Meaning |
+|---|---|
+| `qdb_qid` | Quicken's schedule ID (unique). |
+| `account_id` | → `accounts.id` the transaction is entered into. |
+| `next_date` | Next due date. |
+| `end_date` | Last scheduled date, or `NULL` if the schedule never ends. |
+| `remaining_payments` | Payments left, or `NULL` if unlimited. |
+| `amount` / `amount_numeric` | Amount Quicken shows for the next instance. |
+| `stored_amount` | Amount stored on the schedule; differs from `amount` when `amount_type` is not `fixed`. |
+| `amount_type` | `fixed`, `estimated` (from recent payments), or `card_balance` (from the credit card balance). |
+| `payee`, `memo` | As entered on the schedule. |
+| `category`, `transfer_account` | Category name, or the other account's name for a transfer. A split schedule has its lines in `scheduled_transaction_splits`. |
+| `frequency` | Quicken's text, e.g. `Monthly`, `Every 4 weeks`, `Only Once`. |
+| `method` | `Payment`, `Deposit`, or `Transfer`. |
+| `reminder_lead_days` | Days before `next_date` that Quicken reminds. |
+
+### `scheduled_transaction_splits`
+
+Split lines of a schedule: `scheduled_transaction_id` →
+`scheduled_transactions.id`, `line_number`, `category`, `transfer_account`,
+`amount` / `amount_numeric`.
 
 ### `budgets`
 

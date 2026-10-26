@@ -172,6 +172,35 @@ CREATE TABLE IF NOT EXISTS transaction_splits (
     amount_numeric REAL GENERATED ALWAYS AS (CAST(amount AS REAL)) VIRTUAL,
     UNIQUE(transaction_id, line_number)
 );
+CREATE TABLE IF NOT EXISTS scheduled_transactions (
+    id INTEGER PRIMARY KEY,
+    qdb_qid INTEGER NOT NULL UNIQUE,
+    account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+    next_date TEXT,
+    end_date TEXT,
+    remaining_payments INTEGER,
+    amount TEXT,
+    stored_amount TEXT,
+    amount_type TEXT,
+    payee TEXT,
+    memo TEXT,
+    category TEXT,
+    transfer_account TEXT,
+    frequency TEXT,
+    method TEXT,
+    reminder_lead_days INTEGER,
+    amount_numeric REAL GENERATED ALWAYS AS (CAST(amount AS REAL)) VIRTUAL
+);
+CREATE TABLE IF NOT EXISTS scheduled_transaction_splits (
+    id INTEGER PRIMARY KEY,
+    scheduled_transaction_id INTEGER NOT NULL REFERENCES scheduled_transactions(id) ON DELETE CASCADE,
+    line_number INTEGER NOT NULL,
+    category TEXT,
+    transfer_account TEXT,
+    amount TEXT,
+    amount_numeric REAL GENERATED ALWAYS AS (CAST(amount AS REAL)) VIRTUAL,
+    UNIQUE(scheduled_transaction_id, line_number)
+);
 CREATE TABLE IF NOT EXISTS banking_account_balance_periods (
     account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     balance_date TEXT,

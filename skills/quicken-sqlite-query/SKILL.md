@@ -70,6 +70,8 @@ before using them and report deliberate differences:
   `metadata`
 - FI and investment: `fi_transactions`, `investment_transactions`,
   `securities`, `security_prices`
+- Scheduled: `scheduled_transactions`, `scheduled_transaction_splits`
+  (upcoming bills/deposits; not posted ledger rows)
 - Balances: `banking_account_balance_periods`,
   `investment_account_balance_periods`,
   `investment_position_balance_periods`
