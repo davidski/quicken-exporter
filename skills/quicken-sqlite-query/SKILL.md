@@ -91,6 +91,26 @@ and apply both effective-date boundaries. Never substitute a future balance;
 if no effective row exists, report that the extract has no balance for that
 account/date. See the reference for the SQL pattern and position lookup.
 
+## Investment flows and performance
+
+`investment_transactions` may not contain every cash movement in an investment
+account. Income, fees and some transfers can exist only in `transactions`. For
+external flows or performance, read the cash-side `transactions` rows too, and
+reconcile against `investment_transactions` by `transaction_id`. Don't call a
+purchase unfunded until you've checked the register for that account and date.
+
+Stored investment values and `security_prices` can be stale, so don't use them
+as market values without checking their dates. Value holdings as shares from the
+effective position rows × dated closes from a market data source, at both the
+start and end dates. Also check for:
+
+- Deposits categorized as a transfer to their own account, which can be real
+  inflows.
+- Transfers between accounts whose amounts reflect cost basis rather than market
+  value. Check that shares carry over instead.
+- Unusually high implied returns, which should trigger a search for missing
+  flows before reporting.
+
 ## Query workflow
 
 1. Resolve, validate, and if needed snapshot the exact database path.
