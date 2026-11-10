@@ -128,3 +128,22 @@ def test_qhi_idb_export_preserves_rooms_items_and_fields(tmp_path):
         assert "valuation_date_raw" not in {
             row[1] for row in connection.execute("PRAGMA table_info(item_valuations)")
         }
+
+
+def test_qhi_idb_export_reads_record_at_page_start(tmp_path):
+    # QHI pages are 1024 bytes; the first record after the 18-byte page header has no
+    # ff ff marker, only two header bytes before it.
+    page = bytearray(_fixture())
+    page += b"\x00" * (1024 - len(page))
+    item = _payload(1, 40, struct.pack("<HIHI", 1, 10, 2, 20) + b"\x09\x00Microwave oven\x00")
+    item = bytes((len(item) + 1,)) + item[1:]
+    source = tmp_path / "QHI.IDB"
+    source.write_bytes(bytes(page) + b"\x00" * 16 + b"\x67\x02" + item + b"\xff\xff")
+
+    counts = export_qhi_to_sqlite(source, tmp_path / "qhi.sqlite")
+
+    assert counts["items"] == 2
+    with sqlite3.connect(tmp_path / "qhi.sqlite") as connection:
+        assert connection.execute("SELECT description FROM items WHERE id = 40").fetchone() == (
+            "Microwave oven",
+        )

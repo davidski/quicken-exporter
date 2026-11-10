@@ -88,8 +88,21 @@ class Field:
     real: float | None = None
 
 
+PAGE_SIZE = 1024
+PAGE_HEADER_SIZE = 18
+
+
 def _records(data: bytes) -> list[Record]:
-    markers = [match.start() for match in re.finditer(b"\xff\xff", data)]
+    # The first record on each 1024-byte page follows the 18-byte page header with no
+    # ff ff marker; treat the header's last two bytes as that record's marker. Only
+    # accept it when the record's length byte lands on the next ff ff, which rejects
+    # index pages and records continuing from the previous page.
+    page_starts = {
+        start
+        for start in range(PAGE_HEADER_SIZE - 2, len(data) - 3, PAGE_SIZE)
+        if data[start + 1 + data[start + 2] : start + 3 + data[start + 2]] == b"\xff\xff"
+    }
+    markers = sorted({match.start() for match in re.finditer(b"\xff\xff", data)} | page_starts)
     records = []
     for index, start in enumerate(markers[:-1]):
         if start + 9 >= len(data) or data[start + 4] != 0x80:
