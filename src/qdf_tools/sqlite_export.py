@@ -152,10 +152,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     tag TEXT,
     transfer_account TEXT,
+    transfer_transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
     cleared TEXT CHECK (cleared IS NULL OR cleared IN ('*', 'c', 'X', 'R')),
     qdb_record_type TEXT NOT NULL,
     qdb_internal_id INTEGER,
-    qdb_register_ref INTEGER
+    qdb_register_ref INTEGER,
+    transfer_qdb_register_ref INTEGER
 );
 CREATE TABLE IF NOT EXISTS fi_transactions (
     id INTEGER PRIMARY KEY,
@@ -224,6 +226,8 @@ CREATE TABLE IF NOT EXISTS banking_account_balance_periods (
 CREATE INDEX IF NOT EXISTS ix_transactions_date ON transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS ix_transactions_account_date ON transactions(account_id, transaction_date);
 CREATE INDEX IF NOT EXISTS ix_transactions_payee ON transactions(payee);
+CREATE INDEX IF NOT EXISTS ix_transactions_register_ref ON transactions(qdb_register_ref);
+CREATE INDEX IF NOT EXISTS ix_transactions_transfer ON transactions(transfer_transaction_id);
 CREATE INDEX IF NOT EXISTS ix_fi_transactions_fit_id ON fi_transactions(fit_id);
 CREATE INDEX IF NOT EXISTS ix_fi_transactions_account_date ON fi_transactions(account_id, transaction_date);
 CREATE INDEX IF NOT EXISTS ix_fi_transactions_register ON fi_transactions(register_transaction_id);
@@ -256,6 +260,15 @@ DROP VIEW IF EXISTS budget_amounts_analytics;
 DROP VIEW IF EXISTS budget_analytics;
 DROP VIEW IF EXISTS banking_transaction_balances;
 DROP VIEW IF EXISTS account_transaction_balances;
+DROP VIEW IF EXISTS unpaired_transfers;
+CREATE VIEW unpaired_transfers AS
+SELECT transactions.*, accounts.name AS account_name
+FROM transactions
+LEFT JOIN accounts ON accounts.id = transactions.account_id
+WHERE transactions.transfer_account IS NOT NULL
+    AND transactions.transfer_transaction_id IS NULL
+    -- [Own account] is Quicken's opening-balance marker, not a transfer.
+    AND transactions.transfer_account IS NOT accounts.name;
 CREATE VIEW banking_account_balance_intervals AS
 SELECT
     balance_periods.account_id,
@@ -361,7 +374,7 @@ NUMERIC_GENERATED_COLUMNS = {
 
 # Table -> text present only in its current CREATE statement (a CHECK constraint).
 CONSTRAINED_TABLES = {
-    "transactions": "CHECK (cleared",
+    "transactions": "transfer_transaction_id",
     "fi_transactions": "CHECK (link_method",
     "investment_account_balance_periods": "CHECK (cash_balance_status",
 }
@@ -802,7 +815,7 @@ def write_transactions(
         connection.executemany(
             "INSERT INTO metadata(key, value) VALUES (?, ?)",
             [
-                ("schema_version", "34"),
+                ("schema_version", "35"),
                 ("source_format", source_format),
                 ("extract_date", extract_date),
             ]
@@ -862,8 +875,9 @@ def write_transactions(
                     account_id, transaction_date, amount, payee, downloaded_payee,
                     payee_source, memo, number, fit_id,
                     category, tag, transfer_account, cleared, qdb_record_type,
-                    security, price, quantity, commission, qdb_internal_id, qdb_register_ref
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    security, price, quantity, commission, qdb_internal_id, qdb_register_ref,
+                    transfer_qdb_register_ref
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     account_id,
                     _date(transaction.date),
@@ -893,6 +907,11 @@ def write_transactions(
                         if isinstance(transaction.raw.get("qdb_register_ref"), int)
                         else None
                     ),
+                    (
+                        transaction.raw.get("qdb_transfer_register_ref")
+                        if isinstance(transaction.raw.get("qdb_transfer_register_ref"), int)
+                        else None
+                    ),
                 ),
             )
             transaction_id = cursor.lastrowid
@@ -913,6 +932,20 @@ def write_transactions(
             count += 1
         _materialize_categories(connection)
         _materialize_tags(connection)
+        # Quicken's transfer-ref field is reused on non-transfer rows, so a ref is
+        # trusted only when the other leg points back, or sits in the account this
+        # row names as its transfer target (a split leg carries no ref of its own).
+        # Legs are never in the same account; an opening balance names its own.
+        connection.execute(
+            "UPDATE transactions SET transfer_transaction_id = ("
+            "SELECT other.id FROM transactions AS other "
+            "WHERE other.qdb_register_ref = transactions.transfer_qdb_register_ref "
+            "AND other.account_id IS NOT transactions.account_id "
+            "AND (other.transfer_qdb_register_ref = transactions.qdb_register_ref "
+            "OR other.account_id = "
+            "(SELECT id FROM accounts WHERE name = transactions.transfer_account))) "
+            "WHERE transfer_qdb_register_ref IS NOT NULL"
+        )
         connection.execute(
             "INSERT INTO metadata(key, value) VALUES (?, ?)", ("transaction_count", str(count))
         )

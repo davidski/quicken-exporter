@@ -6,8 +6,8 @@ What the export database contains. The source of truth is `SCHEMA` in
 The home inventory export is a separate database; see
 [qhi-sqlite-schema.md](qhi-sqlite-schema.md).
 
-Current `schema_version`: **38**. The base export writes 34; adding the saved-report tables raises it to 38.
-Checked against a real extract on 2026-10-26.
+Current `schema_version`: **38**. The base export writes 35; adding the saved-report tables raises it to 38.
+Checked against a real extract on 2026-11-16.
 
 ## Conventions
 
@@ -44,6 +44,7 @@ erDiagram
     accounts |o--o{ scheduled_transactions : account_id
     scheduled_transactions ||--o{ scheduled_transaction_splits : scheduled_transaction_id
     transactions ||--o{ transaction_splits : transaction_id
+    transactions |o--o| transactions : transfer_transaction_id
     categories |o--o{ categories : parent_id
     categories |o--o{ transactions : category_id
     categories |o--o{ transaction_splits : category_id
@@ -115,12 +116,15 @@ accounts (plus cash-side investment register entries).
 | `security`, `price`, `quantity`, `commission` | Investment details when the row is an investment action. |
 | `category`, `tag` | Category/tag name. A split parent has category `--Split--` and its lines in `transaction_splits` sum to its amount. |
 | `category_id` | → `categories.id`; `NULL` for transfers and uncategorized rows. |
-| `transfer_account` | Other account's name if this is a transfer. |
+| `transfer_account` | Other account's name if this is a transfer. `[Own account]` on an opening-balance row is not a transfer. |
+| `transfer_transaction_id` | → `transactions.id` of the other transfer leg. Set when the legs point at each other, or when this row points at a row in its `transfer_account`. The leg that is a split parent stays `NULL`, since a split can transfer to several accounts. |
 | `cleared` | `R` reconciled, `c` cleared, `NULL` uncleared; QIF imports may also use `*` and `X`. |
 | `qdb_record_type` | QDB record type the row was decoded from, e.g. `QDB:0xf7` (register). |
 | `qdb_internal_id`, `qdb_register_ref` | Source identifiers. |
+| `transfer_qdb_register_ref` | Raw `GetTransferQid` value (register offset `0x56`). Quicken reuses it on non-transfer rows; use `transfer_transaction_id` instead. |
 
-Indexed on date, (account, date), payee, and `category_id`.
+Indexed on date, (account, date), payee, `category_id`, `qdb_register_ref`,
+and `transfer_transaction_id`.
 
 ### `transaction_splits`
 
@@ -260,6 +264,7 @@ settings.
 | `investment_position_balance_intervals` | Position periods with account and security name/symbol and REAL values. |
 | `budget_analytics` | Budgets joined to `category_name`, with `rollover_enabled` and `has_manual_rollover_amount` flags. |
 | `report_readable` | Reports flattened with their components. |
+| `unpaired_transfers` | Transfer rows with no linked other leg (opening balances excluded), plus `account_name`. Should be empty; rows here point to a decoding gap or a missing leg. |
 
 ## Example queries
 

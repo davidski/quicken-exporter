@@ -97,7 +97,7 @@ $-12.50
             "Weekly shop",
         )
         assert db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone() == (
-            "34",
+            "35",
         )
         extract_date = db.execute(
             "SELECT value FROM metadata WHERE key = 'extract_date'"
@@ -196,7 +196,7 @@ def test_write_transactions_removes_legacy_raw_price_date_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(security_prices)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "qdb_date_word" not in columns
-    assert version == ("34",)
+    assert version == ("35",)
 
 
 def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
@@ -215,7 +215,7 @@ def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(accounts)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "raw_json" not in columns
-    assert version == ("34",)
+    assert version == ("35",)
 
 
 def test_account_transaction_balances_view_is_removed(tmp_path):
@@ -342,6 +342,51 @@ def test_categories_link_by_id_with_parent_hierarchy(tmp_path):
     ]
     assert transaction_category == ("Food:Dining:Lunch",)
     assert split_categories == [("Auto", 1), ("[Savings]", 0)]
+
+
+def _register_row(account, ref, transfer_ref, amount, category=None):
+    return QifTransaction(
+        account=account,
+        date=dt.date(2024, 1, 1),
+        amount=Decimal(amount),
+        category=category,
+        raw={"qdb_register_ref": ref, "qdb_transfer_register_ref": transfer_ref},
+    )
+
+
+def test_transfer_legs_pair_by_register_ref(tmp_path):
+    destination = tmp_path / "export.sqlite"
+    write_transactions(
+        destination,
+        [
+            # Reciprocal pair.
+            _register_row("Checking", 1, 2, "-100", "[Savings]"),
+            _register_row("Savings", 2, 1, "100", "[Checking]"),
+            # Loan leg points at a split checking row that carries no ref.
+            _register_row("Loan", 3, 4, "50", "[Checking]"),
+            _register_row("Checking", 4, None, "-60", "--Split--"),
+            # Reused ref field on a non-transfer row must not link.
+            _register_row("Checking", 5, 2, "-5", "Food"),
+            # Opening balance names its own account.
+            _register_row("House", 6, None, "1000", "[House]"),
+            # Opening balance whose stray ref hits another row in its own account.
+            _register_row("Brokerage", 7, 8, "-0.08", "[Brokerage]"),
+            _register_row("Brokerage", 8, 9, "-40", "Food"),
+        ],
+        source_format="test-qif",
+    )
+
+    with sqlite3.connect(destination) as db:
+        links = db.execute(
+            "SELECT t.qdb_register_ref, o.qdb_register_ref FROM transactions t "
+            "LEFT JOIN transactions o ON o.id = t.transfer_transaction_id ORDER BY 1"
+        ).fetchall()
+        unpaired = db.execute("SELECT COUNT(*) FROM unpaired_transfers").fetchone()[0]
+
+    assert links == [
+        (1, 2), (2, 1), (3, 4), (4, None), (5, None), (6, None), (7, None), (8, None)
+    ]
+    assert unpaired == 0
 
 
 def test_unexpected_cleared_value_is_rejected(tmp_path):

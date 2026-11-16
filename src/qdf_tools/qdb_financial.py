@@ -626,6 +626,11 @@ def _qdb_native_split_overrides(
                 category = f"[{catalog_names.get(category_handle, str(category_handle))}]"
             fit_ids = fit_ids_by_register.get(register_ref, set())
             fit_id = next(iter(fit_ids)) if len(fit_ids) == 1 else None
+            # RegTransaction::GetTransferQid: the other leg's register ref, or
+            # zero/self/0xffffffff when the row is not a transfer.
+            transfer_ref = struct.unpack_from("<I", record, 0x56)[0]
+            if transfer_ref in (0, register_ref, 0xFFFFFFFF):
+                transfer_ref = None
             register_only.append(
                 QifTransaction(
                     account=catalog_names.get(
@@ -646,6 +651,7 @@ def _qdb_native_split_overrides(
                         "qdb_type": "0xf7 register split",
                         "qdb_register_ref": register_ref,
                         "qdb_account_handle": account_handle,
+                        "qdb_transfer_register_ref": transfer_ref,
                         "fit_id": fit_id,
                         "check_number": native_check_numbers.get(register_ref),
                         "qdb_clear_status": clear_status_by_register.get(register_ref),
