@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS scheduled_transactions (
     payee TEXT,
     memo TEXT,
     category TEXT,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     transfer_account TEXT,
     frequency TEXT,
     method TEXT,
@@ -200,6 +201,7 @@ CREATE TABLE IF NOT EXISTS scheduled_transaction_splits (
     scheduled_transaction_id INTEGER NOT NULL REFERENCES scheduled_transactions(id) ON DELETE CASCADE,
     line_number INTEGER NOT NULL,
     category TEXT,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     transfer_account TEXT,
     amount TEXT,
     amount_numeric REAL GENERATED ALWAYS AS (CAST(amount AS REAL)) VIRTUAL,
@@ -353,6 +355,8 @@ NUMERIC_GENERATED_COLUMNS = {
 CATEGORY_LINKED_TABLES = (
     "transactions",
     "transaction_splits",
+    "scheduled_transactions",
+    "scheduled_transaction_splits",
 )
 
 
@@ -776,7 +780,7 @@ def write_transactions(
         connection.executemany(
             "INSERT INTO metadata(key, value) VALUES (?, ?)",
             [
-                ("schema_version", "33"),
+                ("schema_version", "34"),
                 ("source_format", source_format),
                 ("extract_date", extract_date),
             ]

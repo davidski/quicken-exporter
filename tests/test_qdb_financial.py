@@ -850,3 +850,14 @@ def test_write_qdb_scheduled_transactions_to_sqlite(tmp_path):
         (3, "Visa", "2026-09-10", None, None, "-110", "fixed", "Utilities:Internet", None),
     ]
     assert splits == [(0, None, "Loan", "-223.8"), (1, "Interest", None, "-0.04")]
+    with sqlite3.connect(destination) as connection:
+        linked = connection.execute(
+            "SELECT s.qdb_qid, c.name FROM scheduled_transactions s "
+            "LEFT JOIN categories c ON c.id = s.category_id ORDER BY s.qdb_qid"
+        ).fetchall()
+        linked_splits = connection.execute(
+            "SELECT sp.line_number, c.name FROM scheduled_transaction_splits sp "
+            "LEFT JOIN categories c ON c.id = sp.category_id ORDER BY sp.line_number"
+        ).fetchall()
+    assert linked == [(2, None), (3, "Utilities:Internet")]
+    assert linked_splits == [(0, None), (1, "Interest")]

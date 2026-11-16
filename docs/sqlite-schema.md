@@ -6,7 +6,7 @@ What the export database contains. The source of truth is `SCHEMA` in
 The home inventory export is a separate database; see
 [qhi-sqlite-schema.md](qhi-sqlite-schema.md).
 
-Current `schema_version`: **38**. The base export writes 33; adding the saved-report tables raises it to 38.
+Current `schema_version`: **38**. The base export writes 34; adding the saved-report tables raises it to 38.
 Checked against a real extract on 2026-10-26.
 
 ## Conventions
@@ -44,6 +44,8 @@ erDiagram
     categories |o--o{ categories : parent_id
     categories |o--o{ transactions : category_id
     categories |o--o{ transaction_splits : category_id
+    categories |o--o{ scheduled_transactions : category_id
+    categories |o--o{ scheduled_transaction_splits : category_id
     transactions |o--o{ fi_transactions : register_transaction_id
     transactions |o--o{ investment_transactions : transaction_id
     securities ||--o{ security_prices : security_id
@@ -203,6 +205,7 @@ schedule; past instances are ordinary rows in `transactions`.
 | `amount_type` | `fixed`, `estimated` (from recent payments), or `card_balance` (from the credit card balance). |
 | `payee`, `memo` | As entered on the schedule. |
 | `category`, `transfer_account` | Category name, or the other account's name for a transfer. A split schedule has its lines in `scheduled_transaction_splits`. |
+| `category_id` | → `categories.id`; `NULL` for transfers. |
 | `frequency` | Quicken's text, e.g. `Monthly`, `Every 4 weeks`, `Only Once`. |
 | `method` | `Payment`, `Deposit`, or `Transfer`. |
 | `reminder_lead_days` | Days before `next_date` that Quicken reminds. |
@@ -210,7 +213,7 @@ schedule; past instances are ordinary rows in `transactions`.
 ### `scheduled_transaction_splits`
 
 Split lines of a schedule: `scheduled_transaction_id` →
-`scheduled_transactions.id`, `line_number`, `category`, `transfer_account`,
+`scheduled_transactions.id`, `line_number`, `category`, `category_id`, `transfer_account`,
 `amount` / `amount_numeric`.
 
 ### `budgets`

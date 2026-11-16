@@ -97,7 +97,7 @@ $-12.50
             "Weekly shop",
         )
         assert db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone() == (
-            "33",
+            "34",
         )
         extract_date = db.execute(
             "SELECT value FROM metadata WHERE key = 'extract_date'"
@@ -196,7 +196,7 @@ def test_write_transactions_removes_legacy_raw_price_date_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(security_prices)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "qdb_date_word" not in columns
-    assert version == ("33",)
+    assert version == ("34",)
 
 
 def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
@@ -215,7 +215,7 @@ def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(accounts)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "raw_json" not in columns
-    assert version == ("33",)
+    assert version == ("34",)
 
 
 def test_account_transaction_balances_view_is_removed(tmp_path):

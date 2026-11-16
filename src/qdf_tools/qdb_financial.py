@@ -2312,12 +2312,13 @@ def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: 
                 "SELECT name, qdb_handle FROM accounts WHERE qdb_handle IS NOT NULL"
             )
         }
-        category_names = {
-            h: n
-            for n, h in connection.execute(
-                "SELECT name, qdb_handle FROM categories WHERE qdb_handle IS NOT NULL"
-            )
-        }
+        category_names = {}
+        category_ids = {}
+        for i, n, h in connection.execute(
+            "SELECT id, name, qdb_handle FROM categories WHERE qdb_handle IS NOT NULL"
+        ):
+            category_names[h] = n
+            category_ids[h] = i
 
         def target(category: int, transfer: int) -> tuple[str | None, str | None]:
             # A category slot holding an account handle is a transfer (as in register splits).
@@ -2326,6 +2327,9 @@ def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: 
             if transfer in account_names:
                 return category_names.get(category), account_names[transfer]
             return category_names.get(category), None
+
+        def category_id(category: int) -> int | None:
+            return None if category in account_names else category_ids.get(category)
 
         def cents(value: str) -> str:
             return str(Decimal(int(value)) / Decimal(100))
@@ -2339,8 +2343,8 @@ def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: 
             cursor = connection.execute(
                 "INSERT INTO scheduled_transactions(qdb_qid, account_id, next_date, end_date, "
                 "remaining_payments, amount, stored_amount, amount_type, payee, memo, category, "
-                "transfer_account, frequency, method, reminder_lead_days) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "category_id, transfer_account, frequency, method, reminder_lead_days) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(qdb_qid) DO NOTHING",
                 (
                     qid,
@@ -2354,6 +2358,7 @@ def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: 
                     row["payee"] or None,
                     row["memo"] or None,
                     category,
+                    category_id(int(row["category"])),
                     transfer,
                     row["frequency"] or None,
                     row["method"] or None,
@@ -2369,8 +2374,15 @@ def write_qdb_scheduled_transactions_to_sqlite(source: str | Path, destination: 
             category, transfer = target(int(split["category"]), int(split["transfer"]))
             connection.execute(
                 "INSERT INTO scheduled_transaction_splits(scheduled_transaction_id, line_number, "
-                "category, transfer_account, amount) VALUES (?, ?, ?, ?, ?)",
-                (parent, int(split["line"]), category, transfer, cents(split["amount_cents"])),
+                "category, category_id, transfer_account, amount) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    parent,
+                    int(split["line"]),
+                    category,
+                    category_id(int(split["category"])),
+                    transfer,
+                    cents(split["amount_cents"]),
+                ),
             )
     return len(ids)
 
