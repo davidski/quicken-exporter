@@ -97,7 +97,7 @@ $-12.50
             "Weekly shop",
         )
         assert db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone() == (
-            "32",
+            "33",
         )
         extract_date = db.execute(
             "SELECT value FROM metadata WHERE key = 'extract_date'"
@@ -196,7 +196,7 @@ def test_write_transactions_removes_legacy_raw_price_date_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(security_prices)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "qdb_date_word" not in columns
-    assert version == ("32",)
+    assert version == ("33",)
 
 
 def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
@@ -215,7 +215,7 @@ def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(accounts)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "raw_json" not in columns
-    assert version == ("32",)
+    assert version == ("33",)
 
 
 def test_account_transaction_balances_view_is_removed(tmp_path):
@@ -304,3 +304,41 @@ def test_qif_transaction_category_and_tag_are_split(tmp_path):
     transaction = parse_qif(source)[0]
     assert transaction.category == "Travel:Air Travel"
     assert transaction.tag == "Vacation"
+
+
+def test_categories_link_by_id_with_parent_hierarchy(tmp_path):
+    destination = tmp_path / "export.sqlite"
+    write_transactions(
+        destination,
+        [
+            QifTransaction(
+                account="Checking",
+                date=dt.date(2024, 1, 1),
+                category="Food:Dining:Lunch",
+                splits=[QifSplit(category="Auto"), QifSplit(category="[Savings]")],
+            )
+        ],
+        source_format="test-qif",
+    )
+
+    with sqlite3.connect(destination) as db:
+        hierarchy = db.execute(
+            "SELECT child.name, parent.name, child.depth FROM categories AS child "
+            "LEFT JOIN categories AS parent ON parent.id = child.parent_id ORDER BY child.name"
+        ).fetchall()
+        transaction_category = db.execute(
+            "SELECT categories.name FROM transactions "
+            "JOIN categories ON categories.id = transactions.category_id"
+        ).fetchone()
+        split_categories = db.execute(
+            "SELECT category, category_id IS NOT NULL FROM transaction_splits ORDER BY line_number"
+        ).fetchall()
+
+    assert hierarchy == [
+        ("Auto", None, 0),
+        ("Food", None, 0),
+        ("Food:Dining", "Food", 1),
+        ("Food:Dining:Lunch", "Food:Dining", 2),
+    ]
+    assert transaction_category == ("Food:Dining:Lunch",)
+    assert split_categories == [("Auto", 1), ("[Savings]", 0)]

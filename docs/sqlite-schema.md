@@ -6,7 +6,7 @@ What the export database contains. The source of truth is `SCHEMA` in
 The home inventory export is a separate database; see
 [qhi-sqlite-schema.md](qhi-sqlite-schema.md).
 
-Current `schema_version`: **38**. The base export writes 32; adding the saved-report tables raises it to 38.
+Current `schema_version`: **38**. The base export writes 33; adding the saved-report tables raises it to 38.
 Checked against a real extract on 2026-10-26.
 
 ## Conventions
@@ -41,6 +41,9 @@ erDiagram
     accounts |o--o{ scheduled_transactions : account_id
     scheduled_transactions ||--o{ scheduled_transaction_splits : scheduled_transaction_id
     transactions ||--o{ transaction_splits : transaction_id
+    categories |o--o{ categories : parent_id
+    categories |o--o{ transactions : category_id
+    categories |o--o{ transaction_splits : category_id
     transactions |o--o{ fi_transactions : register_transaction_id
     transactions |o--o{ investment_transactions : transaction_id
     securities ||--o{ security_prices : security_id
@@ -52,8 +55,9 @@ erDiagram
     report_filter_groups ||--o{ report_filter_values : filter_group_id
 ```
 
-`transactions.category`, `tag` and `transfer_account` are names stored as
-text, not foreign keys.
+`category` columns also have a `category_id` foreign key; prefer it for joins,
+since names change when a category is renamed. `tag` and `transfer_account`
+are names stored as text, not foreign keys.
 
 ## Tables
 
@@ -82,7 +86,10 @@ One row per Quicken account, including closed and hidden ones.
 ### `categories`, `tags`
 
 Name lists. `id`, unique `name`, `qdb_handle`. Category names use Quicken's
-`Parent:Child` form.
+`Parent:Child` form. `categories` also has `parent_id` (→ `categories.id`,
+`NULL` at the top level) and `depth` (0 at the top level). A parent that
+appears only inside a child's name is added as its own row, with no
+`qdb_handle`.
 
 ### `transactions`
 
@@ -102,18 +109,19 @@ accounts (plus cash-side investment register entries).
 | `fit_id` | Bank's download ID (FITID), when downloaded. |
 | `security`, `price`, `quantity`, `commission` | Investment details when the row is an investment action. |
 | `category`, `tag` | Category/tag name. A split parent has category `--Split--` and its lines in `transaction_splits` sum to its amount. |
+| `category_id` | → `categories.id`; `NULL` for transfers and uncategorized rows. |
 | `transfer_account` | Other account's name if this is a transfer. |
 | `cleared` | `R` reconciled, `c` cleared, `NULL` uncleared. |
 | `qdb_record_type` | QDB record type the row was decoded from, e.g. `QDB:0xf7` (register). |
 | `qdb_internal_id`, `qdb_register_ref` | Source identifiers. |
 
-Indexed on date, (account, date), and payee.
+Indexed on date, (account, date), payee, and `category_id`.
 
 ### `transaction_splits`
 
 Split lines of a transaction. `transaction_id` → `transactions.id`,
-`line_number` (unique per transaction), `category`, `transfer_account`,
-`memo`, `amount` / `amount_numeric`. Use split amounts, not the parent,
+`line_number` (unique per transaction), `category`, `category_id`
+(→ `categories.id`), `transfer_account`, `memo`, `amount` / `amount_numeric`. Use split amounts, not the parent,
 when grouping by category.
 
 ### `fi_transactions`

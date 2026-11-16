@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
-    qdb_handle INTEGER
+    qdb_handle INTEGER,
+    parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    depth INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY,
@@ -140,6 +142,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     price_numeric REAL GENERATED ALWAYS AS (CAST(price AS REAL)) VIRTUAL,
     commission_numeric REAL GENERATED ALWAYS AS (CAST(commission AS REAL)) VIRTUAL,
     category TEXT,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     tag TEXT,
     transfer_account TEXT,
     cleared TEXT,
@@ -166,6 +169,7 @@ CREATE TABLE IF NOT EXISTS transaction_splits (
     transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     line_number INTEGER NOT NULL,
     category TEXT,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     transfer_account TEXT,
     memo TEXT,
     amount TEXT,
@@ -346,6 +350,12 @@ NUMERIC_GENERATED_COLUMNS = {
 }
 
 
+CATEGORY_LINKED_TABLES = (
+    "transactions",
+    "transaction_splits",
+)
+
+
 def _ensure_numeric_generated_columns(connection: sqlite3.Connection) -> None:
     for table, generated_columns in NUMERIC_GENERATED_COLUMNS.items():
         columns = {row[1] for row in connection.execute(f"PRAGMA table_xinfo({table})")}
@@ -468,7 +478,21 @@ def _tag(connection: sqlite3.Connection, name: str | None) -> None:
 
 
 def _materialize_categories(connection: sqlite3.Connection) -> None:
-    """Rewrite the category rows so the table's physical order is name-ascending."""
+    """Rewrite the category rows so the table's physical order is name-ascending.
+
+    Also adds missing ``Parent:Child`` ancestors and relinks every ``category_id``
+    and ``parent_id``, since the rewrite reassigns ids.
+    """
+    names = {row[0] for row in connection.execute("SELECT name FROM categories")}
+    connection.executemany(
+        "INSERT INTO categories(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
+        [
+            (ancestor,)
+            for name in names
+            for ancestor in (name.rsplit(":", depth)[0] for depth in range(1, name.count(":") + 1))
+            if ancestor not in names
+        ],
+    )
     connection.execute(
         "CREATE TEMP TABLE ordered_category_names(name TEXT PRIMARY KEY, qdb_handle INTEGER)"
     )
@@ -482,6 +506,17 @@ def _materialize_categories(connection: sqlite3.Connection) -> None:
         "SELECT name, qdb_handle FROM ordered_category_names ORDER BY name COLLATE BINARY"
     )
     connection.execute("DROP TABLE ordered_category_names")
+    connection.execute(
+        "UPDATE categories SET "
+        "depth = LENGTH(name) - LENGTH(REPLACE(name, ':', '')), "
+        "parent_id = (SELECT parent.id FROM categories AS parent WHERE parent.name = "
+        "RTRIM(RTRIM(categories.name, REPLACE(categories.name, ':', '')), ':'))"
+    )
+    for table in CATEGORY_LINKED_TABLES:
+        connection.execute(
+            f"UPDATE {table} SET category_id = "
+            f"(SELECT id FROM categories WHERE categories.name = {table}.category)"
+        )
 
 
 def _materialize_tags(connection: sqlite3.Connection) -> None:
@@ -597,6 +632,21 @@ def write_transactions(
         category_columns = {row[1] for row in connection.execute("PRAGMA table_info(categories)")}
         if category_columns and "qdb_handle" not in category_columns:
             connection.execute("ALTER TABLE categories ADD COLUMN qdb_handle INTEGER")
+        if category_columns and "parent_id" not in category_columns:
+            connection.execute(
+                "ALTER TABLE categories ADD COLUMN parent_id INTEGER "
+                "REFERENCES categories(id) ON DELETE SET NULL"
+            )
+            connection.execute(
+                "ALTER TABLE categories ADD COLUMN depth INTEGER NOT NULL DEFAULT 0"
+            )
+        for table in CATEGORY_LINKED_TABLES:
+            table_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            if table_columns and "category_id" not in table_columns:
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN category_id INTEGER "
+                    "REFERENCES categories(id) ON DELETE SET NULL"
+                )
         budget_amounts_exists = bool(
             connection.execute("PRAGMA table_info(budget_amounts)").fetchall()
         )
@@ -613,6 +663,10 @@ def write_transactions(
                 connection.execute("DROP TABLE budgets")
         connection.executescript(SCHEMA)
         _ensure_numeric_generated_columns(connection)
+        for table in CATEGORY_LINKED_TABLES:
+            connection.execute(
+                f"CREATE INDEX IF NOT EXISTS ix_{table}_category_id ON {table}(category_id)"
+            )
         columns = {row[1] for row in connection.execute("PRAGMA table_info(accounts)")}
         if "qdb_handle" not in columns:
             connection.execute("ALTER TABLE accounts ADD COLUMN qdb_handle INTEGER")
@@ -722,7 +776,7 @@ def write_transactions(
         connection.executemany(
             "INSERT INTO metadata(key, value) VALUES (?, ?)",
             [
-                ("schema_version", "32"),
+                ("schema_version", "33"),
                 ("source_format", source_format),
                 ("extract_date", extract_date),
             ]
