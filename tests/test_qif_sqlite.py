@@ -97,7 +97,7 @@ $-12.50
             "Weekly shop",
         )
         assert db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone() == (
-            "35",
+            "36",
         )
         extract_date = db.execute(
             "SELECT value FROM metadata WHERE key = 'extract_date'"
@@ -196,7 +196,7 @@ def test_write_transactions_removes_legacy_raw_price_date_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(security_prices)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "qdb_date_word" not in columns
-    assert version == ("35",)
+    assert version == ("36",)
 
 
 def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
@@ -215,7 +215,7 @@ def test_write_transactions_removes_legacy_account_raw_json_column(tmp_path):
         columns = {row[1] for row in db.execute("PRAGMA table_info(accounts)")}
         version = db.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
     assert "raw_json" not in columns
-    assert version == ("35",)
+    assert version == ("36",)
 
 
 def test_account_transaction_balances_view_is_removed(tmp_path):
@@ -417,3 +417,27 @@ def test_old_unconstrained_tables_are_recreated_with_checks(tmp_path):
             "SELECT sql FROM sqlite_master WHERE name = 'fi_transactions'"
         ).fetchone()[0]
     assert "CHECK (link_method" in sql
+
+
+def test_deleting_an_account_cascades_to_its_rows(tmp_path):
+    destination = tmp_path / "export.sqlite"
+    write_transactions(
+        destination,
+        [
+            QifTransaction(
+                account="Internal",
+                date=dt.date(2024, 1, 1),
+                category="--Split--",
+                splits=[QifSplit(category="Food")],
+            ),
+            QifTransaction(account="Checking", date=dt.date(2024, 1, 1)),
+        ],
+        source_format="test-qif",
+    )
+
+    with sqlite3.connect(destination) as db:
+        db.execute("PRAGMA foreign_keys = ON")
+        db.execute("DELETE FROM accounts WHERE name = 'Internal'")
+        assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM transaction_splits").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM pragma_foreign_key_check").fetchone()[0] == 0

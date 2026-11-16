@@ -2274,9 +2274,16 @@ def export_qdb_financial_to_sqlite(
             directory / "qdb-type-080.bin",
         )
     with sqlite3.connect(destination) as connection:
+        # ON DELETE CASCADE removes the accounts' transactions, investment rows,
+        # and balance periods with them.
+        connection.execute("PRAGMA foreign_keys = ON")
         connection.executemany(
             "DELETE FROM accounts WHERE name = ?",
             [(name,) for name in QDB_INTERNAL_ACCOUNT_NAMES],
+        )
+        count = connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        connection.execute(
+            "UPDATE metadata SET value = ? WHERE key = 'transaction_count'", (str(count),)
         )
     return count
 

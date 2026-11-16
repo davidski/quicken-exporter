@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS investment_position_balance_periods (
 );
 CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY,
-    account_id INTEGER REFERENCES accounts(id),
+    account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
     transaction_date TEXT,
     amount TEXT,
     payee TEXT,
@@ -372,9 +372,9 @@ NUMERIC_GENERATED_COLUMNS = {
 }
 
 
-# Table -> text present only in its current CREATE statement (a CHECK constraint).
+# Table -> text present only in its current CREATE statement (a constraint).
 CONSTRAINED_TABLES = {
-    "transactions": "transfer_transaction_id",
+    "transactions": "account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE",
     "fi_transactions": "CHECK (link_method",
     "investment_account_balance_periods": "CHECK (cash_balance_status",
 }
@@ -816,7 +816,7 @@ def write_transactions(
         connection.executemany(
             "INSERT INTO metadata(key, value) VALUES (?, ?)",
             [
-                ("schema_version", "35"),
+                ("schema_version", "36"),
                 ("source_format", source_format),
                 ("extract_date", extract_date),
             ]

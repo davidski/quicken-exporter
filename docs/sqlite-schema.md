@@ -6,7 +6,7 @@ What the export database contains. The source of truth is `SCHEMA` in
 The home inventory export is a separate database; see
 [qhi-sqlite-schema.md](qhi-sqlite-schema.md).
 
-Current `schema_version`: **38**. The base export writes 35; adding the saved-report tables raises it to 38.
+Current `schema_version`: **38**. The base export writes 36; adding the saved-report tables raises it to 38.
 Checked against a real extract on 2026-11-16.
 
 ## Conventions
