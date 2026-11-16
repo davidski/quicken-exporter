@@ -387,6 +387,8 @@ def test_transfer_legs_pair_by_register_ref(tmp_path):
         (1, 2), (2, 1), (3, 4), (4, None), (5, None), (6, None), (7, None), (8, None)
     ]
     assert unpaired == 0
+    with sqlite3.connect(destination) as db:
+        assert db.execute("SELECT name FROM categories ORDER BY name").fetchall() == [("Food",)]
 
 
 def test_unexpected_cleared_value_is_rejected(tmp_path):

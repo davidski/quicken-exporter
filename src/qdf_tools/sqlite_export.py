@@ -494,7 +494,8 @@ def _account_id_with_metadata(
 
 
 def _category(connection: sqlite3.Connection, name: str | None) -> None:
-    if not name or name.startswith("["):
+    # Transfers ("[Account]") and the split-parent marker are not categories.
+    if not name or name.startswith("[") or name == "--Split--":
         return
     connection.execute(
         "INSERT INTO categories(name) VALUES (?) ON CONFLICT(name) DO NOTHING", (name,)

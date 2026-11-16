@@ -115,7 +115,7 @@ accounts (plus cash-side investment register entries).
 | `fit_id` | Bank's download ID (FITID), when downloaded. |
 | `security`, `price`, `quantity`, `commission` | Investment details when the row is an investment action. |
 | `category`, `tag` | Category/tag name. A split parent has category `--Split--` and its lines in `transaction_splits` sum to its amount. |
-| `category_id` | → `categories.id`; `NULL` for transfers and uncategorized rows. |
+| `category_id` | → `categories.id`; `NULL` for transfers, splits, and uncategorized rows. |
 | `transfer_account` | Other account's name if this is a transfer. `[Own account]` on an opening-balance row is not a transfer. |
 | `transfer_transaction_id` | → `transactions.id` of the other transfer leg. Set when the legs point at each other, or when this row points at a row in its `transfer_account`. The leg that is a split parent stays `NULL`, since a split can transfer to several accounts. |
 | `cleared` | `R` reconciled, `c` cleared, `NULL` uncleared; QIF imports may also use `*` and `X`. |
