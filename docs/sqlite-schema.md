@@ -22,6 +22,9 @@ Checked against a real extract on 2026-10-26.
   internal IDs, register refs. Use them to trace a row back to the source or
   to join tables that share a QDB key (for example `budgets.category_qid` →
   `categories.qdb_handle`).
+- **Enumerated text columns** (`cleared`, `payee_source`, `link_method`,
+  `cash_balance_status`, `cash_balance_source`) have `CHECK` constraints, so
+  an unexpected decoded value fails the export instead of reaching queries.
 - **Balance periods** hold one row per date where a balance changes. A
   row is valid from `balance_date` (inclusive) to `next_balance_date`
   (exclusive); `next_balance_date` is `NULL` on the latest row. To get the
@@ -113,7 +116,7 @@ accounts (plus cash-side investment register entries).
 | `category`, `tag` | Category/tag name. A split parent has category `--Split--` and its lines in `transaction_splits` sum to its amount. |
 | `category_id` | → `categories.id`; `NULL` for transfers and uncategorized rows. |
 | `transfer_account` | Other account's name if this is a transfer. |
-| `cleared` | `R` reconciled, `c` cleared, `NULL` uncleared. |
+| `cleared` | `R` reconciled, `c` cleared, `NULL` uncleared; QIF imports may also use `*` and `X`. |
 | `qdb_record_type` | QDB record type the row was decoded from, e.g. `QDB:0xf7` (register). |
 | `qdb_internal_id`, `qdb_register_ref` | Source identifiers. |
 
@@ -179,8 +182,8 @@ Account-level investment balance history: `cash_balance`,
 - `cash_balance_status`: `anchored` when the cash series starts from a known
   balance; `unanchored_opening_balance` when the starting cash is unknown, so
   cash figures may be offset by a constant.
-- `cash_balance_source`: how cash was computed (`native_transaction_types`
-  or `native_qaccess_balance_series`).
+- `cash_balance_source`: how cash was computed (`native_qaccess_balance_series`,
+  `native_transaction_types`, or `native_transaction_types+backfill_pair_metadata`).
 
 ### `investment_position_balance_periods`
 

@@ -342,3 +342,31 @@ def test_categories_link_by_id_with_parent_hierarchy(tmp_path):
     ]
     assert transaction_category == ("Food:Dining:Lunch",)
     assert split_categories == [("Auto", 1), ("[Savings]", 0)]
+
+
+def test_unexpected_cleared_value_is_rejected(tmp_path):
+    destination = tmp_path / "export.sqlite"
+    try:
+        write_transactions(
+            destination,
+            [QifTransaction(account="Checking", date=dt.date(2024, 1, 1), cleared="?")],
+            source_format="test-qif",
+        )
+    except sqlite3.IntegrityError as error:
+        assert "CHECK constraint failed" in str(error)
+    else:
+        raise AssertionError("cleared='?' was accepted")
+
+
+def test_old_unconstrained_tables_are_recreated_with_checks(tmp_path):
+    destination = tmp_path / "export.sqlite"
+    with sqlite3.connect(destination) as db:
+        db.execute("CREATE TABLE fi_transactions (id INTEGER PRIMARY KEY, link_method TEXT)")
+
+    write_transactions(destination, [], source_format="test-qif")
+
+    with sqlite3.connect(destination) as db:
+        sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'fi_transactions'"
+        ).fetchone()[0]
+    assert "CHECK (link_method" in sql

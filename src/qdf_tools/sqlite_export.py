@@ -102,8 +102,14 @@ CREATE TABLE IF NOT EXISTS investment_account_balance_periods (
     balance_date TEXT NOT NULL,
     next_balance_date TEXT,
     cash_balance TEXT NOT NULL,
-    cash_balance_status TEXT NOT NULL DEFAULT 'unanchored_opening_balance',
-    cash_balance_source TEXT NOT NULL DEFAULT 'native_transaction_types',
+    cash_balance_status TEXT NOT NULL DEFAULT 'unanchored_opening_balance'
+        CHECK (cash_balance_status IN ('anchored', 'unanchored_opening_balance')),
+    cash_balance_source TEXT NOT NULL DEFAULT 'native_transaction_types'
+        CHECK (cash_balance_source IN (
+            'native_qaccess_balance_series',
+            'native_transaction_types',
+            'native_transaction_types+backfill_pair_metadata'
+        )),
     investment_value TEXT NOT NULL,
     total_value TEXT NOT NULL,
     cash_balance_numeric REAL GENERATED ALWAYS AS (CAST(cash_balance AS REAL)) VIRTUAL,
@@ -130,7 +136,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount TEXT,
     payee TEXT,
     downloaded_payee TEXT,
-    payee_source TEXT,
+    payee_source TEXT
+        CHECK (payee_source IS NULL OR payee_source = 'QDB register displayed payee'),
     memo TEXT,
     number TEXT,
     fit_id TEXT,
@@ -145,7 +152,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     tag TEXT,
     transfer_account TEXT,
-    cleared TEXT,
+    cleared TEXT CHECK (cleared IS NULL OR cleared IN ('*', 'c', 'X', 'R')),
     qdb_record_type TEXT NOT NULL,
     qdb_internal_id INTEGER,
     qdb_register_ref INTEGER
@@ -158,11 +165,11 @@ CREATE TABLE IF NOT EXISTS fi_transactions (
     amount TEXT,
     payee TEXT,
     fit_id TEXT,
-    cleared TEXT,
+    cleared TEXT CHECK (cleared IS NULL OR cleared IN ('*', 'c', 'X', 'R')),
     qdb_record_type TEXT NOT NULL,
     qdb_internal_id INTEGER NOT NULL UNIQUE,
     qdb_register_ref INTEGER,
-    link_method TEXT
+    link_method TEXT CHECK (link_method IS NULL OR link_method IN ('0x096', 'FITID/0x086'))
 );
 CREATE TABLE IF NOT EXISTS transaction_splits (
     id INTEGER PRIMARY KEY,
@@ -351,6 +358,13 @@ NUMERIC_GENERATED_COLUMNS = {
     "transaction_splits": {"amount_numeric": "amount"},
 }
 
+
+# Table -> text present only in its current CREATE statement (a CHECK constraint).
+CONSTRAINED_TABLES = {
+    "transactions": "CHECK (cleared",
+    "fi_transactions": "CHECK (link_method",
+    "investment_account_balance_periods": "CHECK (cash_balance_status",
+}
 
 CATEGORY_LINKED_TABLES = (
     "transactions",
@@ -557,6 +571,14 @@ def write_transactions(
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(destination) as connection:
+        # SQLite cannot add CHECK constraints in place. These tables are emptied
+        # on every export anyway, so an older file's copy is dropped and recreated.
+        for table, marker in CONSTRAINED_TABLES.items():
+            sql = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+            ).fetchone()
+            if sql and marker not in sql[0]:
+                connection.execute(f"DROP TABLE {table}")
         existing_price_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(security_prices)")
         }
