@@ -148,6 +148,59 @@ valid and use a transaction-derived fallback otherwise. The canonical
 financial `0x13c` rows are in `fi_transactions`; they must not be added to a
 register-backed balance when they represent the same ledger entries.
 
+## Category hierarchy and transfer pairing
+
+Check the columns before using them; older extracts lack them.
+
+- `category_id` (schema 33+) on `transactions`, `transaction_splits`,
+  `scheduled_transactions`, and `scheduled_transaction_splits` →
+  `categories.id`. It is `NULL` for transfers, `--Split--` parents, and
+  uncategorized rows.
+- `categories.parent_id` and `depth` (schema 33+) encode `Parent:Child`.
+  Every ancestor exists as its own row, even if Quicken stored no handle for it.
+- `transactions.transfer_transaction_id` (schema 35+) → the other transfer leg.
+  A split-parent leg stays `NULL` because one split can transfer to several
+  accounts. `transfer_qdb_register_ref` is raw Quicken data reused on
+  non-transfer rows; do not join on it.
+- `[Own account]` in `transfer_account` marks an opening balance, not a
+  transfer.
+
+Roll spending up to top-level categories:
+
+```sql
+WITH RECURSIVE lineage(id, top_id) AS (
+  SELECT id, id FROM categories WHERE parent_id IS NULL
+  UNION ALL
+  SELECT c.id, l.top_id FROM categories c JOIN lineage l ON c.parent_id = l.id
+),
+lines AS (
+  SELECT t.transaction_date, COALESCE(s.category_id, t.category_id) AS category_id,
+         COALESCE(s.amount_numeric, t.amount_numeric) AS amount
+  FROM transactions t
+  LEFT JOIN transaction_splits s ON s.transaction_id = t.id
+)
+SELECT top.name AS category, SUM(lines.amount) AS total
+FROM lines
+JOIN lineage ON lineage.id = lines.category_id
+JOIN categories top ON top.id = lineage.top_id
+WHERE lines.transaction_date BETWEEN :start_date AND :end_date
+GROUP BY top.name
+ORDER BY total;
+```
+
+Transfers between two included accounts net to zero; a transfer to an
+excluded account (closed, separate, or outside the requested set) is a real
+flow for the included side:
+
+```sql
+SELECT t.transaction_date, a.name AS account, t.amount, oa.name AS other_account
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+JOIN transactions o ON o.id = t.transfer_transaction_id
+JOIN accounts oa ON oa.id = o.account_id
+WHERE oa.is_closed = 1 OR oa.is_separate = 1;
+```
+
 ## Transaction, investment, and balance provenance
 
 There are three deliberately different transaction representations:

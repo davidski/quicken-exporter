@@ -39,7 +39,11 @@ description: Query user-selected SQLite databases containing Quicken extracts fo
    budget `flags` as a bitmask. For splits, use split rows and exclude a
    `--Split--` parent from aggregates; otherwise use the transaction row.
    Resolve bracketed transfer categories through `transfer_account` before
-   calling a category missing.
+   calling a category missing. When present (schema 33+), join categories
+   through `category_id` and roll up through `categories.parent_id`/`depth`
+   rather than matching name prefixes; when present (schema 35+), use
+   `transfer_transaction_id` to identify and pair transfer legs. Fall back to
+   the text columns only on older extracts, and say so.
 7. **Use effective balances.** For an as-of date, bind `:account_name` and
    ISO `:as_of_date`, validate the date, and apply both interval boundaries.
    Allow a null `balance_date` only for a valid initial banking interval; never
@@ -79,7 +83,8 @@ before using them and report deliberate differences:
   `report_filter_groups`, `report_filter_values`, `report_readable`
 - Optional convenience views: `banking_account_balance_intervals`,
   `investment_account_balance_intervals`,
-  `investment_position_balance_intervals`, `budget_analytics`
+  `investment_position_balance_intervals`, `budget_analytics`,
+  `unpaired_transfers` (transfer rows with no linked other leg; normally empty)
 
 Read [references/schema-and-semantics.md](references/schema-and-semantics.md)
 for the column map and focused query patterns.
@@ -118,7 +123,8 @@ start and end dates. Also check for:
    representative rows without exposing unrelated financial data.
 3. Choose the narrowest ledger/table query, applying account, split, transfer,
    date, and source-family rules.
-4. Validate the result with an independent grouping or reconciliation; state
+4. Validate the result with an independent grouping or reconciliation (for
+   transfer-sensitive totals, check `unpaired_transfers` when present); state
    date coverage, exclusions, assumptions, and optional-data limits.
 5. Return only the needed rows or aggregates, enough evidence to reproduce any
    non-obvious classification, and clear distinctions between facts and
