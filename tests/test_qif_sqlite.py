@@ -383,9 +383,7 @@ def test_transfer_legs_pair_by_register_ref(tmp_path):
         ).fetchall()
         unpaired = db.execute("SELECT COUNT(*) FROM unpaired_transfers").fetchone()[0]
 
-    assert links == [
-        (1, 2), (2, 1), (3, 4), (4, None), (5, None), (6, None), (7, None), (8, None)
-    ]
+    assert links == [(1, 2), (2, 1), (3, 4), (4, None), (5, None), (6, None), (7, None), (8, None)]
     assert unpaired == 0
     with sqlite3.connect(destination) as db:
         assert db.execute("SELECT name FROM categories ORDER BY name").fetchall() == [("Food",)]
@@ -413,9 +411,9 @@ def test_old_unconstrained_tables_are_recreated_with_checks(tmp_path):
     write_transactions(destination, [], source_format="test-qif")
 
     with sqlite3.connect(destination) as db:
-        sql = db.execute(
-            "SELECT sql FROM sqlite_master WHERE name = 'fi_transactions'"
-        ).fetchone()[0]
+        sql = db.execute("SELECT sql FROM sqlite_master WHERE name = 'fi_transactions'").fetchone()[
+            0
+        ]
     assert "CHECK (link_method" in sql
 
 

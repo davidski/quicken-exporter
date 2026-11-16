@@ -677,9 +677,7 @@ def write_transactions(
                 "ALTER TABLE categories ADD COLUMN parent_id INTEGER "
                 "REFERENCES categories(id) ON DELETE SET NULL"
             )
-            connection.execute(
-                "ALTER TABLE categories ADD COLUMN depth INTEGER NOT NULL DEFAULT 0"
-            )
+            connection.execute("ALTER TABLE categories ADD COLUMN depth INTEGER NOT NULL DEFAULT 0")
         for table in CATEGORY_LINKED_TABLES:
             table_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
             if table_columns and "category_id" not in table_columns:
