@@ -13,8 +13,10 @@ def test_password_bridge_is_version_guarded_and_uses_verified_native_entry_point
     assert 'PasswordStdinArgument = "--password-stdin"' in source
     assert "ReadOptionalPassword" in source
     assert "Convert.FromBase64String" in source
-    assert 'SupportedQdbVersion = "27.1.68.31"' in source
-    assert "PasswordPrimitiveBuilderRva = 0x2eb30" in source
+    assert "MinimumQdbVersion = new Version(27, 1, 68, 31)" in source
+    assert "version < MinimumQdbVersion" in source
+    assert "PasswordPrimitiveBuilderSignature" in source
+    assert "signature is ambiguous" in source
     assert '"_DecryptFileWithPrimitivePassword@8"' in source
     assert "QDF appears to require a data-file password" in source
     assert "The supplied data-file password was rejected" in source
